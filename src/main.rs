@@ -27,8 +27,8 @@ struct Perm {
 
 impl Perm {
     fn inverse(&self) -> Perm {
-        let cp = self.cp.iter().rev().cloned().collect();
-        let ep = self.ep.iter().rev().cloned().collect();
+        let cp = self.cp.iter().rev().cloned().map(|p| p.iter().rev().cloned().collect()).collect();
+        let ep = self.ep.iter().rev().cloned().map(|p| p.iter().rev().cloned().collect()).collect();
         Perm { cp, ep }
     }
 
@@ -38,8 +38,19 @@ impl Perm {
         cube.apply(other);
         cube.perm()
     }
+
+    fn from_turn(turn: &Turn) -> Perm {
+        let mut cube = Cube {
+            corner: Cube::SOLVED.corner.clone(),
+            edge: Cube::SOLVED.edge.clone(),
+        };
+
+        cube.turn(turn);
+        cube.perm()
+    }
 }
 
+#[derive(Debug)]
 struct Turn {
     cp: CornerTurn,
     ep: EdgeTurn,
@@ -216,7 +227,7 @@ impl Cube {
                 }
             }
         }
-        perm
+        perm.inverse()
     }
 }
 
@@ -235,10 +246,10 @@ impl fmt::Display for Perm {
 fn main() {
 
     let mut cube: Cube = Cube::SOLVED;
-    let sequence = [Turn::R, Turn::U, Turn::RI, Turn::UI];
-    let sequence2 = [Turn::L, Turn::B, Turn::R, Turn::U, Turn::F, Turn::D];
-    let sequence3 = [Turn::DI, Turn::FI, Turn::UI, Turn::RI, Turn::BI, Turn::LI];
-    let sequence4 = [
+    let sequence = vec![Turn::R, Turn::U, Turn::RI, Turn::UI];
+    let sequence2 = vec![Turn::L, Turn::B, Turn::R, Turn::U, Turn::F, Turn::D];
+    let sequence3 = vec![Turn::DI, Turn::FI, Turn::UI, Turn::RI, Turn::BI, Turn::LI];
+    let sequence4 = vec![
         Turn::R, Turn::RI,
         Turn::L, Turn::LI,
         Turn::U, Turn::UI,
@@ -246,7 +257,7 @@ fn main() {
         Turn::F, Turn::FI,
         Turn::B, Turn::BI,
     ];
-    let sequence5 = [
+    let sequence5 = vec![
         Turn::R,
         Turn::L,
         Turn::U,
@@ -260,22 +271,35 @@ fn main() {
         Turn::LI,
         Turn::RI,
     ];
-let sequence6 = [ Turn::R, Turn::U, Turn::U, Turn::DI, Turn::B, Turn::DI ];
-    let mut ct = 0;
+    let sequence6 = vec![ Turn::R, Turn::U, Turn::U, Turn::DI, Turn::B, Turn::DI ];
+    let sequence7 = vec![ Turn::R ];
+    let sequences = vec![
+        sequence,
+        sequence2,
+        sequence3,
+        sequence4,
+        sequence5,
+        sequence6,
+        sequence7,
+    ];
 
-    println!("initial state: {}", cube.to_string());
+    for seq in sequences {
+        let mut ct = 0;
 
-    loop {
-        ct += 1;
-        for t in sequence6.iter() {
-            cube.turn(t);
-        }
-        println!("{}: {}", ct, cube.to_string());
-        println!("{}", cube.perm().to_string());
-        if cube == Cube::SOLVED {
-            println!("Solved in {} times!", ct);
-            break;
-        } else {
+        println!("sequence: {:?}", seq);
+        println!("initial state: {}", cube);
+
+        loop {
+            ct += 1;
+            for t in seq.iter() {
+                cube.apply(&Perm::from_turn(t));
+                // cube.turn(t);
+            }
+            if cube == Cube::SOLVED {
+                println!("Solved in {} times!", ct);
+                break;
+            } else {
+            }
         }
     }
 }
