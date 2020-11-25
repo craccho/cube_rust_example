@@ -1,4 +1,5 @@
 use std::fmt;
+use regex::Regex;
 
 type CornerPosition = usize;
 type EdgePosition = usize;
@@ -20,12 +21,20 @@ type EdgeTurn = [(EdgePosition, EdgeFlip); 4];
 type CornerPerm = Vec<Vec<CornerSticker>>;
 type EdgePerm = Vec<Vec<EdgeSticker>>;
 
+#[derive(Clone,Debug)]
 struct Perm {
     cp: CornerPerm,
     ep: EdgePerm,
 }
 
 impl Perm {
+    fn new() -> Perm {
+        Perm {
+            cp: Vec::new(),
+            ep: Vec::new(),
+        }
+    }
+
     fn inverse(&self) -> Perm {
         let cp = self.cp.iter().rev().cloned().map(|p| p.iter().rev().cloned().collect()).collect();
         let ep = self.ep.iter().rev().cloned().map(|p| p.iter().rev().cloned().collect()).collect();
@@ -48,9 +57,61 @@ impl Perm {
         cube.turn(turn);
         cube.perm()
     }
+
+    fn from_scramble(scramble: &str) -> Perm {
+        let re = Regex::new(r"([UDFBRL]['2]?)").unwrap();
+        let mut perm: Perm = Perm::new();
+
+        let u = Perm::from_turn(&Turn::U);
+        let ui = u.inverse();
+        let u2 = u.concat(&u);
+        let d = Perm::from_turn(&Turn::D);
+        let di = d.inverse();
+        let d2 = d.concat(&d);
+        let f = Perm::from_turn(&Turn::F);
+        let fi = f.inverse();
+        let f2 = f.concat(&f);
+        let b = Perm::from_turn(&Turn::B);
+        let bi = b.inverse();
+        let b2 = b.concat(&b);
+        let r = Perm::from_turn(&Turn::R);
+        let ri = r.inverse();
+        let r2 = r.concat(&r);
+        let l = Perm::from_turn(&Turn::L);
+        let li = l.inverse();
+        let l2 = l.concat(&l);
+
+        for cap in re.captures_iter(scramble) {
+            println!("{}", &cap[1]);
+            let p = match &cap[1] {
+                "U" => &u,
+                "U'" => &ui,
+                "U2" => &u2,
+                "D" => &d,
+                "D'" => &di,
+                "D2" => &d2,
+                "F" => &f,
+                "F'" => &fi,
+                "F2" => &f2,
+                "B" => &b,
+                "B'" => &bi,
+                "B2" => &b2,
+                "R" => &r,
+                "R'" => &ri,
+                "R2" => &r2,
+                "L" => &l,
+                "L'" => &li,
+                "L2" => &l2,
+                _ => { println!("failed!"); continue },
+            };
+            perm = perm.concat(p);
+        }
+
+        perm
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Hash,Eq,PartialEq)]
 struct Turn {
     cp: CornerTurn,
     ep: EdgeTurn,
@@ -273,7 +334,9 @@ fn main() {
     ];
     let sequence6 = vec![ Turn::R, Turn::U, Turn::U, Turn::DI, Turn::B, Turn::DI ];
     let sequence7 = vec![ Turn::R ];
-    let sequences = vec![
+    let sc = Perm::from_scramble("R' U' F R2 U R2 U F2 L2 D' R2 U B2 U' L' U F' L R2 D' F' L' R D' R' U' F");
+    let sc2 = Perm::from_scramble("R");
+    let mut sequences: Vec<Perm> = vec![
         sequence,
         sequence2,
         sequence3,
@@ -281,19 +344,26 @@ fn main() {
         sequence5,
         sequence6,
         sequence7,
-    ];
+    ].iter().map(|turns| {
+        let mut perm = Perm::new();
+        for t in turns {
+            perm = perm.concat(&Perm::from_turn(t));
+        }
+        perm
+    }).collect();
+    sequences.push(sc);
+    sequences.push(sc2);
 
     for seq in sequences {
         let mut ct = 0;
 
         println!("sequence: {:?}", seq);
-        println!("initial state: {}", cube);
 
         loop {
             ct += 1;
-            for t in seq.iter() {
-                cube.apply(&Perm::from_turn(t));
-                // cube.turn(t);
+            cube.apply(&seq);
+            if ct == 1 {
+                println!("initial state: {}", cube);
             }
             if cube == Cube::SOLVED {
                 println!("Solved in {} times!", ct);
