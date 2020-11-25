@@ -140,7 +140,7 @@ impl Turn {
     const LI: Turn = Turn::L.inverse();
 
     const U: Turn = Turn {
-        cp: [( 3, 0), ( 2, 0), ( 1, 0), ( 0, 0)],
+        cp: [( 1, 0), ( 2, 0), ( 3, 0), ( 0, 0)],
         ep: [( 3, 0), ( 0, 0), ( 1, 0), ( 2, 0)],
     };
     const UI: Turn = Turn::U.inverse();
