@@ -23,29 +23,44 @@ type EdgePerm = Vec<Vec<EdgeSticker>>;
 
 #[derive(Clone,Debug)]
 struct Perm {
+    name: Option<String>,
     cp: CornerPerm,
     ep: EdgePerm,
 }
 
-impl Perm {
+impl  Perm {
     fn new() -> Perm {
         Perm {
+            name: None,
             cp: Vec::new(),
             ep: Vec::new(),
         }
     }
 
-    fn inverse(&self) -> Perm {
+    fn inverse(&self, name: &str) -> Perm {
         let cp = self.cp.iter().rev().cloned().map(|p| p.iter().rev().cloned().collect()).collect();
         let ep = self.ep.iter().rev().cloned().map(|p| p.iter().rev().cloned().collect()).collect();
-        Perm { cp, ep }
+        Perm { name: Some(String::from(name)), cp, ep }
     }
 
-    fn concat(&self, other: &Perm) -> Perm {
+    fn double(&self) -> Perm {
         let mut cube = Cube::SOLVED;
+        let name = self.name.as_ref().map(|name| format!("{}2", name)).unwrap_or_default();
+
+
         cube.apply(self);
-        cube.apply(other);
-        cube.perm()
+        cube.apply(self);
+        cube.perm(&name)
+    }
+
+    fn join(perms: Vec<Perm>) -> Perm {
+        let mut cube = Cube::SOLVED;
+        let name = perms.iter().flat_map(|p| p.name.as_ref().map(|s| s.to_string())).collect::<Vec<_>>().join(" ");
+
+        for perm in perms {
+            cube.apply(&perm);
+        }
+        cube.perm(name.as_str())
     }
 
     fn from_turn(turn: &Turn) -> Perm {
@@ -55,7 +70,7 @@ impl Perm {
         };
 
         cube.turn(turn);
-        cube.perm()
+        cube.perm(turn.name)
     }
 
     fn from_scramble(scramble: &str) -> Perm {
@@ -63,105 +78,112 @@ impl Perm {
         let mut perm: Perm = Perm::new();
 
         let u = Perm::from_turn(&Turn::U);
-        let ui = u.inverse();
-        let u2 = u.concat(&u);
+        let ui = u.inverse("U'");
+        let u2 = u.double();
         let d = Perm::from_turn(&Turn::D);
-        let di = d.inverse();
-        let d2 = d.concat(&d);
+        let di = d.inverse("D'");
+        let d2 = d.double();
         let f = Perm::from_turn(&Turn::F);
-        let fi = f.inverse();
-        let f2 = f.concat(&f);
+        let fi = f.inverse("F'");
+        let f2 = f.double();
         let b = Perm::from_turn(&Turn::B);
-        let bi = b.inverse();
-        let b2 = b.concat(&b);
+        let bi = b.inverse("B'");
+        let b2 = b.double();
         let r = Perm::from_turn(&Turn::R);
-        let ri = r.inverse();
-        let r2 = r.concat(&r);
+        let ri = r.inverse("R'");
+        let r2 = r.double();
         let l = Perm::from_turn(&Turn::L);
-        let li = l.inverse();
-        let l2 = l.concat(&l);
+        let li = l.inverse("L'");
+        let l2 = l.double();
 
-        for cap in re.captures_iter(scramble) {
+        let perms = re.captures_iter(scramble).map(|cap| {
             println!("{}", &cap[1]);
-            let p = match &cap[1] {
-                "U" => &u,
-                "U'" => &ui,
-                "U2" => &u2,
-                "D" => &d,
-                "D'" => &di,
-                "D2" => &d2,
-                "F" => &f,
-                "F'" => &fi,
-                "F2" => &f2,
-                "B" => &b,
-                "B'" => &bi,
-                "B2" => &b2,
-                "R" => &r,
-                "R'" => &ri,
-                "R2" => &r2,
-                "L" => &l,
-                "L'" => &li,
-                "L2" => &l2,
-                _ => { println!("failed!"); continue },
-            };
-            perm = perm.concat(p);
-        }
+            match &cap[1] {
+                "U" => u.clone(),
+                "U'" => ui.clone(),
+                "U2" => u2.clone(),
+                "D" => d.clone(),
+                "D'" => di.clone(),
+                "D2" => d2.clone(),
+                "F" => f.clone(),
+                "F'" => fi.clone(),
+                "F2" => f2.clone(),
+                "B" => b.clone(),
+                "B'" => bi.clone(),
+                "B2" => b2.clone(),
+                "R" => r.clone(),
+                "R'" => ri.clone(),
+                "R2" => r2.clone(),
+                "L" => l.clone(),
+                "L'" => li.clone(),
+                "L2" => l2.clone(),
+                _ => { println!("failed!"); Perm::new() },
+            }
+        }).collect();
 
-        perm
+        Perm::join(perms)
     }
 }
 
 #[derive(Debug,Hash,Eq,PartialEq)]
 struct Turn {
+    name: &'static str,
     cp: CornerTurn,
     ep: EdgeTurn,
 }
 
 impl Turn {
-    const fn inverse(&self) -> Turn {
+    const fn inverse(&self, name: &'static str) -> Turn {
         let cp = &self.cp;
         let ep = &self.ep;
         Turn {
+            name,
             cp: [cp[3], cp[2], cp[1], cp[0]],
             ep: [ep[3], ep[2], ep[1], ep[0]],
         }
     }
 
     const R: Turn = Turn {
+        name: "R",
         cp: [( 7, 1), ( 0, 2), ( 3, 1), ( 4, 2)],
         ep: [( 4, 0), ( 0, 0), ( 7, 0), ( 8, 0)],
     };
-    const RI: Turn = Turn::R.inverse();
+    const RI: Turn = Turn::R.inverse("R'");
 
     const L: Turn = Turn {
+        name: "L",
         cp: [( 2, 2), ( 1, 1), ( 6, 2), ( 5, 1)],
         ep: [( 6, 0), ( 2, 0), ( 5, 0), (10, 0)],
     };
-    const LI: Turn = Turn::L.inverse();
+    const LI: Turn = Turn::L.inverse("L'");
 
     const U: Turn = Turn {
+        name: "U",
         cp: [( 1, 0), ( 2, 0), ( 3, 0), ( 0, 0)],
         ep: [( 3, 0), ( 0, 0), ( 1, 0), ( 2, 0)],
     };
-    const UI: Turn = Turn::U.inverse();
+    const UI: Turn = Turn::U.inverse("U'");
 
     const D: Turn = Turn {
+        name: "D",
         cp: [( 7, 0), ( 4, 0), ( 5, 0), ( 6, 0)],
         ep: [(11, 0), ( 8, 0), ( 9, 0), (10, 0)],
     };
-    const DI: Turn = Turn::D.inverse();
+    const DI: Turn = Turn::D.inverse("D'");
 
     const F: Turn = Turn {
+        name: "F",
         cp: [( 1, 2), ( 0, 1), ( 7, 2), ( 6, 1)],
         ep: [( 5, 1), ( 1, 1), ( 4, 1), (11, 1)],
     };
-    const FI: Turn = Turn::F.inverse();
+    const FI: Turn = Turn::F.inverse("F'");
 
     const B: Turn  = Turn {
+        name: "B",
         cp: [( 3, 2), ( 2, 1), ( 5, 2), ( 4, 1)],
         ep: [( 6, 1), ( 9, 1), ( 7, 1), ( 3, 1)],
     };
-    const BI: Turn = Turn::B.inverse();
+    const BI: Turn = Turn::B.inverse("B'");
 
 }
 
@@ -255,12 +277,13 @@ impl Cube {
         *self == Cube::SOLVED
     }
 
-    fn perm(&self) -> Perm {
+    fn perm(&self, name: &str) -> Perm {
         let mut cube = Cube {
             corner: self.corner.clone(),
             edge: self.edge.clone(),
         };
         let mut perm = Perm {
+            name: None,
             cp: Vec::new(),
             ep: Vec::new(),
         };
@@ -271,7 +294,7 @@ impl Cube {
                 let mut s2 = cube.corner[i];
                 while s1 != s2 {
                     let p = vec![s1, s2];
-                    let cp = Perm {cp: vec![p.clone()], ep: vec![]};
+                    let cp = Perm {name: None, cp: vec![p.clone()], ep: vec![]};
                     cube.apply(&cp);
                     perm.cp.push(p);
                     s2 = cube.corner[i];
@@ -282,13 +305,17 @@ impl Cube {
                 let s2 = cube.edge[i];
                 if s1 != s2 {
                     let p = vec![s1, s2];
-                    let ep = Perm {ep: vec![p.clone()], cp: vec![]};
+                    let ep = Perm {name: None, ep: vec![p.clone()], cp: vec![]};
                     cube.apply(&ep);
                     perm.ep.push(p);
                 }
             }
         }
-        perm.inverse()
+        perm.inverse(&name.to_string())
+    }
+
+    fn solve(&self) -> Vec<Turn> {
+        vec![]
     }
 }
 
@@ -301,6 +328,12 @@ impl fmt::Display for Cube {
 impl fmt::Display for Perm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "cp:{:?} ep:{:?}", self.cp, self.ep)
+    }
+}
+
+impl fmt::Display for Turn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 
@@ -345,11 +378,11 @@ fn main() {
         sequence6,
         sequence7,
     ].iter().map(|turns| {
-        let mut perm = Perm::new();
-        for t in turns {
-            perm = perm.concat(&Perm::from_turn(t));
-        }
-        perm
+        Perm::join(
+            turns.iter().map(|t| {
+                Perm::from_turn(t)
+            }).collect()
+        )
     }).collect();
     sequences.push(sc);
     sequences.push(sc2);
