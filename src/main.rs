@@ -1,5 +1,6 @@
 use std::fmt;
 use regex::Regex;
+use std::collections::HashMap;
 
 type CornerPosition = usize;
 type EdgePosition = usize;
@@ -10,7 +11,7 @@ type EdgeFlip = u8;
 type Corner = [CornerSticker; 8];
 type Edge = [EdgeSticker; 12];
 
-#[derive(PartialEq)]
+#[derive(PartialEq,Clone)]
 struct Cube {
     corner: Corner,
     edge: Edge,
@@ -73,9 +74,8 @@ impl  Perm {
         cube.perm(turn.name)
     }
 
-    fn from_scramble(scramble: &str) -> Perm {
-        let re = Regex::new(r"([UDFBRL]['2]?)").unwrap();
-        let mut perm: Perm = Perm::new();
+    fn turns() -> HashMap<&'static str, Perm> {
+        let mut turns = HashMap::new();
 
         let u = Perm::from_turn(&Turn::U);
         let ui = u.inverse("U'");
@@ -96,29 +96,37 @@ impl  Perm {
         let li = l.inverse("L'");
         let l2 = l.double();
 
+        turns.insert("U", u);
+        turns.insert("U'", ui);
+        turns.insert("U2", u2);
+        turns.insert("D", d);
+        turns.insert("D'", di);
+        turns.insert("D2", d2);
+        turns.insert("R", r);
+        turns.insert("R'", ri);
+        turns.insert("R2", r2);
+        turns.insert("L", l);
+        turns.insert("L'", li);
+        turns.insert("L2", l2);
+        turns.insert("F", f);
+        turns.insert("F'", fi);
+        turns.insert("F2", f2);
+        turns.insert("B", b);
+        turns.insert("B'", bi);
+        turns.insert("B2", b2);
+
+        turns
+    }
+
+    fn from_scramble(scramble: &str) -> Perm {
+        let re = Regex::new(r"([UDFBRL]['2]?)").unwrap();
+        let mut perm: Perm = Perm::new();
+
+        let turns = Perm::turns();
+
         let perms = re.captures_iter(scramble).map(|cap| {
             println!("{}", &cap[1]);
-            match &cap[1] {
-                "U" => u.clone(),
-                "U'" => ui.clone(),
-                "U2" => u2.clone(),
-                "D" => d.clone(),
-                "D'" => di.clone(),
-                "D2" => d2.clone(),
-                "F" => f.clone(),
-                "F'" => fi.clone(),
-                "F2" => f2.clone(),
-                "B" => b.clone(),
-                "B'" => bi.clone(),
-                "B2" => b2.clone(),
-                "R" => r.clone(),
-                "R'" => ri.clone(),
-                "R2" => r2.clone(),
-                "L" => l.clone(),
-                "L'" => li.clone(),
-                "L2" => l2.clone(),
-                _ => { println!("failed!"); Perm::new() },
-            }
+            turns.get(&cap[1]).unwrap_or(&Perm::new()).clone()
         }).collect();
 
         Perm::join(perms)
@@ -278,10 +286,7 @@ impl Cube {
     }
 
     fn perm(&self, name: &str) -> Perm {
-        let mut cube = Cube {
-            corner: self.corner.clone(),
-            edge: self.edge.clone(),
-        };
+        let mut cube = self.clone();
         let mut perm = Perm {
             name: None,
             cp: Vec::new(),
@@ -314,8 +319,36 @@ impl Cube {
         perm.inverse(&name.to_string())
     }
 
-    fn solve(&self) -> Vec<Turn> {
-        vec![]
+    fn solve(&self) -> Vec<Perm> {
+        let mut solutions: Vec<Vec<Perm>> = Vec::new();
+        let single_turns: &Vec<Perm> = &Perm::turns().values().cloned().collect();
+        let inital = vec![Perm::new()];
+        let mut perms: Vec<(Vec<Perm>, Cube)> = vec![(inital, self.clone())];
+        while solutions.len() == 0 {
+            let mut nexts = Vec::new();
+            for (turns, cube) in &perms {
+                if cube.solved() {
+                    solutions.push(turns.clone());
+                } else {
+                    for turn in single_turns {
+                        let es = &"#".to_string();
+                        let turn_name = turn.name.as_ref().unwrap_or(es);
+                        let tnfc = turn_name.chars().next().unwrap();
+                        let target_name = turns.last().unwrap().name.as_ref().unwrap_or(es);
+                        let gnfc = target_name.chars().next().unwrap();
+                        if tnfc == gnfc { continue; }
+                        let mut cube = cube.clone();
+                        cube.apply(&turn);
+                        let mut nt = turns.clone();
+                        nt.push(turn.clone());
+                        println!("{}", nt.iter().map(|t| t.name.clone().unwrap_or_default()).collect::<Vec<String>>().join(" "));
+                        nexts.push((nt, cube));
+                    }
+                }
+            }
+            perms = nexts
+        }
+        solutions[0].clone()
     }
 }
 
@@ -327,7 +360,10 @@ impl fmt::Display for Cube {
 
 impl fmt::Display for Perm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "cp:{:?} ep:{:?}", self.cp, self.ep)
+        match &self.name {
+            Some(name) => write!(f, "{}", name),
+            None => write!(f, "cp:{:?} ep:{:?}", self.cp, self.ep),
+        }
     }
 }
 
@@ -398,8 +434,10 @@ fn main() {
             if ct == 1 {
                 println!("initial state: {}", cube);
             }
+            let sol = Perm::join(cube.solve());
+            cube.apply(&sol);
             if cube == Cube::SOLVED {
-                println!("Solved in {} times!", ct);
+                println!("Solved by {} !", sol);
                 break;
             } else {
             }
