@@ -29,7 +29,7 @@ struct Perm {
     ep: EdgePerm,
 }
 
-impl  Perm {
+impl Perm {
     fn new() -> Perm {
         Perm {
             name: None,
@@ -118,15 +118,30 @@ impl  Perm {
         turns
     }
 
+    fn kind(&self) -> (u8, u8) {
+        match &self.name {
+            Some(name) => match name.chars().next().unwrap() {
+                'U' => (1, 1),
+                'D' => (2, 1),
+                'R' => (3, 2),
+                'L' => (4, 2),
+                'F' => (5, 3),
+                'B' => (6, 3),
+                _ => (0, 0)
+            },
+            None => (0, 0)
+        }
+    }
+
     fn from_scramble(scramble: &str) -> Perm {
         let re = Regex::new(r"([UDFBRL]['2]?)").unwrap();
-        let mut perm: Perm = Perm::new();
+        let perm: Perm = Perm::new();
 
         let turns = Perm::turns();
 
         let perms = re.captures_iter(scramble).map(|cap| {
             println!("{}", &cap[1]);
-            turns.get(&cap[1]).unwrap_or(&Perm::new()).clone()
+            turns.get(&cap[1]).unwrap_or(&perm).clone()
         }).collect();
 
         Perm::join(perms)
@@ -320,35 +335,37 @@ impl Cube {
     }
 
     fn solve(&self) -> Vec<Perm> {
-        let mut solutions: Vec<Vec<Perm>> = Vec::new();
+        let mut solutions: Vec<Vec<&Perm>> = Vec::new();
         let single_turns: &Vec<Perm> = &Perm::turns().values().cloned().collect();
-        let inital = vec![Perm::new()];
-        let mut perms: Vec<(Vec<Perm>, Cube)> = vec![(inital, self.clone())];
+        let ip = Perm::new();
+        let initial = vec![&ip];
+        let mut perms = vec![(initial, self.clone())];
         while solutions.len() == 0 {
             let mut nexts = Vec::new();
             for (turns, cube) in &perms {
                 if cube.solved() {
-                    solutions.push(turns.clone());
+                    solutions.push(turns.to_vec());
                 } else {
                     for turn in single_turns {
-                        let es = &"#".to_string();
-                        let turn_name = turn.name.as_ref().unwrap_or(es);
-                        let tnfc = turn_name.chars().next().unwrap();
-                        let target_name = turns.last().unwrap().name.as_ref().unwrap_or(es);
-                        let gnfc = target_name.chars().next().unwrap();
-                        if tnfc == gnfc { continue; }
+                        let k1 = turn.kind();
+                        let k2 = turns.last().unwrap().kind();
+                        if k1.0 == k2.0 { continue; }
+                        if turns.len() > 1 && k1.1 == k2.1 {
+                            let k2 = turns[turns.len() - 2].kind();
+                            if k1.0 == k2.0 { continue; }
+                        }
                         let mut cube = cube.clone();
                         cube.apply(&turn);
-                        let mut nt = turns.clone();
-                        nt.push(turn.clone());
-                        println!("{}", nt.iter().map(|t| t.name.clone().unwrap_or_default()).collect::<Vec<String>>().join(" "));
+                        let mut nt = turns.to_vec();
+                        nt.push(turn);
+                        // println!("{}", nt.iter().map(|t| t.name.clone().unwrap_or_default()).collect::<Vec<String>>().join(" "));
                         nexts.push((nt, cube));
                     }
                 }
             }
             perms = nexts
         }
-        solutions[0].clone()
+        solutions[0].iter().map(|&x| x.clone()).collect()
     }
 }
 
