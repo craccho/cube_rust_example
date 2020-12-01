@@ -11,11 +11,90 @@ type EdgeFlip = u8;
 type Corner = [CornerSticker; 8];
 type Edge = [EdgeSticker; 12];
 
+enum Rotation {
+    X, Xi, Y, Yi, Z, Zi,
+}
+
+#[derive(PartialEq,Clone)]
+enum Surface {
+    U, D, F, B, R, L,
+}
+
+impl Surface {
+    fn rotate(&self, rotation: &Rotation) -> Self {
+        match self {
+            Surface::U => match rotation {
+                Rotation::X => Surface::F,
+                Rotation::Xi => Surface::B,
+                Rotation::Y => Surface::U,
+                Rotation::Yi => Surface::U,
+                Rotation::Z => Surface::L,
+                Rotation::Zi => Surface::R,
+            },
+            Surface::D => match rotation {
+                Rotation::X => Surface::B,
+                Rotation::Xi => Surface::F,
+                Rotation::Y => Surface::D,
+                Rotation::Yi => Surface::D,
+                Rotation::Z => Surface::R,
+                Rotation::Zi => Surface::L,
+            },
+            Surface::F => match rotation {
+                Rotation::X => Surface::D,
+                Rotation::Xi => Surface::U,
+                Rotation::Y => Surface::R,
+                Rotation::Yi => Surface::L,
+                Rotation::Z => Surface::F,
+                Rotation::Zi => Surface::F,
+            },
+            Surface::B => match rotation {
+                Rotation::X => Surface::U,
+                Rotation::Xi => Surface::D,
+                Rotation::Y => Surface::L,
+                Rotation::Yi => Surface::R,
+                Rotation::Z => Surface::B,
+                Rotation::Zi => Surface::B,
+            },
+            Surface::R => match rotation {
+                Rotation::X => Surface::R,
+                Rotation::Xi => Surface::R,
+                Rotation::Y => Surface::B,
+                Rotation::Yi => Surface::F,
+                Rotation::Z => Surface::U,
+                Rotation::Zi => Surface::D,
+            },
+            Surface::L => match rotation {
+                Rotation::X => Surface::L,
+                Rotation::Xi => Surface::L,
+                Rotation::Y => Surface::F,
+                Rotation::Yi => Surface::B,
+                Rotation::Z => Surface::D,
+                Rotation::Zi => Surface::U,
+            },
+        }
+    }
+}
+
+#[derive(PartialEq,Clone)]
+struct Orientation {
+    u: Surface,
+    f: Surface,
+}
+
+impl Orientation {
+    fn rotate(&mut self, rotation: &Rotation) {
+        self.u.rotate(rotation);
+        self.f.rotate(rotation);
+    }
+}
+
 #[derive(PartialEq,Clone)]
 struct Cube {
     corner: Corner,
     edge: Edge,
+    orientation: Orientation,
 }
+
 type CornerTurn = [(CornerPosition, CornerTwist); 4];
 type EdgeTurn = [(EdgePosition, EdgeFlip); 4];
 
@@ -65,10 +144,7 @@ impl Perm {
     }
 
     fn from_turn(turn: &Turn) -> Perm {
-        let mut cube = Cube {
-            corner: Cube::SOLVED.corner.clone(),
-            edge: Cube::SOLVED.edge.clone(),
-        };
+        let mut cube = Cube::SOLVED.clone();
 
         cube.turn(turn);
         cube.perm(turn.name)
@@ -214,6 +290,10 @@ impl Cube {
     const SOLVED: Cube = Cube {
         corner: [0,1,2,3,20,21,22,23],
         edge: [0,1,2,3,4,6,12,14,20,21,22,23],
+        orientation: Orientation {
+            u: Surface::U,
+            f: Surface::F,
+        }
     };
     const CT: [[CornerSticker; 24]; 3] =
         [
@@ -294,6 +374,11 @@ impl Cube {
                 self.edge[next[i].0] = next[i].1
             }
         }
+
+    }
+
+    fn rotate(&mut self, rotation: &Rotation) {
+        self.orientation.rotate(rotation);
     }
 
     fn solved(&self) -> bool {
