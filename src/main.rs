@@ -334,9 +334,18 @@ impl Cube {
         perm.inverse(&name.to_string())
     }
 
+    fn eo(&self) -> u8 {
+        let mut cube = self.clone();
+        let mut eo = 0;
+        for &e in cube.edge.iter() {
+            eo += Cube::EP[e as usize].1;
+        }
+        eo
+    }
+
     fn solve(&self) -> Vec<Perm> {
         let mut solutions: Vec<Vec<&Perm>> = Vec::new();
-        let single_turns: &Vec<Perm> = &Perm::turns().values().cloned().collect();
+        let single_turns: Vec<Perm> = Perm::turns().values().cloned().collect();
         let ip = Perm::new();
         let initial = vec![&ip];
         let mut perms = vec![(initial, self.clone())];
@@ -346,7 +355,7 @@ impl Cube {
                 if cube.solved() {
                     solutions.push(turns.to_vec());
                 } else {
-                    for turn in single_turns {
+                    for turn in &single_turns {
                         let k1 = turn.kind();
                         let k2 = turns.last().unwrap().kind();
                         if k1.0 == k2.0 { continue; }
