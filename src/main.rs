@@ -15,6 +15,59 @@ enum Rotation {
     X, Xi, Y, Yi, Z, Zi,
 }
 
+fn rotate_cs(s: u8, r: &Rotation) -> CornerSticker {
+    match r {
+        Rotation::X => [
+            4, 5, 6, 7,
+            20, 21, 22, 23,
+            9, 10, 11, 8,
+            0, 1, 2, 3,
+            19, 16, 17, 18,
+            12, 13, 14, 15,
+        ][s as usize],
+        Rotation::Xi => [
+            12, 13, 14, 15,
+            0, 1, 2, 3,
+            11, 8, 9, 10,
+            20, 21, 22, 23,
+            17, 18, 19, 16,
+            4, 5, 6, 7,
+        ][s as usize],
+        Rotation::Y => [
+            3, 0, 1, 2,
+            16, 17, 18, 19,
+            4, 5, 6, 7,
+            8, 9, 10, 11,
+            12, 13, 14, 15,
+            21, 22, 23, 20,
+        ][s as usize],
+        Rotation::Yi => [
+            1, 2, 3, 0,
+            8, 9, 10, 11,
+            12, 13, 14, 15,
+            16, 17, 18, 19,
+            4, 5, 6, 7,
+            23, 20, 21, 22,
+        ][s as usize],
+        Rotation::Z => [
+            8, 9, 10, 11,
+            7, 4, 5, 6,
+            20, 21, 22, 23,
+            13, 14, 15, 12,
+            0, 1, 2, 3,
+            16, 17, 18, 19,
+        ][s as usize],
+        Rotation::Zi => [
+            16, 17, 18, 19,
+            5, 6, 7, 4,
+            0, 1, 2, 3,
+            15, 12, 13, 14,
+            20, 21, 22, 23,
+            8, 9, 10, 11,
+        ][s as usize],
+    }
+}
+
 #[derive(PartialEq,Clone)]
 enum Surface {
     U, D, F, B, R, L,
@@ -85,6 +138,54 @@ impl Orientation {
     fn rotate(&mut self, rotation: &Rotation) {
         self.u.rotate(rotation);
         self.f.rotate(rotation);
+    }
+
+    fn rotation(&self) -> Vec<Rotation> {
+        match self.u {
+            Surface::U => match self.f {
+                Surface::F => vec![],
+                Surface::B => vec![Rotation::Y, Rotation::Y],
+                Surface::L => vec![Rotation::Yi],
+                Surface::R => vec![Rotation::Y],
+                _ => panic!(),
+            },
+            Surface::D => match self.f {
+                Surface::F => vec![Rotation::Z, Rotation::Z],
+                Surface::B => vec![Rotation::X, Rotation::X],
+                Surface::L => vec![Rotation::X, Rotation::X, Rotation::Yi],
+                Surface::R => vec![Rotation::X, Rotation::X, Rotation::Y],
+                _ => panic!(),
+            },
+            Surface::F => match self.f {
+                Surface::U => vec![Rotation::Z, Rotation::Z, Rotation::X],
+                Surface::D => vec![Rotation::X],
+                Surface::L => vec![Rotation::X, Rotation::Yi],
+                Surface::R => vec![Rotation::X, Rotation::Y],
+                _ => panic!(),
+            },
+            Surface::B => match self.f {
+                Surface::U => vec![Rotation::Xi],
+                Surface::D => vec![Rotation::Y, Rotation::Y, Rotation::X],
+                Surface::L => vec![Rotation::Xi, Rotation::Yi],
+                Surface::R => vec![Rotation::Xi, Rotation::Y],
+                _ => panic!(),
+            },
+            Surface::L => match self.f {
+                Surface::F => vec![Rotation::Z],
+                Surface::B => vec![Rotation::Y, Rotation::Y, Rotation::Zi],
+                Surface::U => vec![Rotation::Y, Rotation::Xi],
+                Surface::D => vec![Rotation::Yi, Rotation::X],
+                _ => panic!(),
+            },
+            Surface::R => match self.f {
+                Surface::F => vec![Rotation::Zi],
+                Surface::B => vec![Rotation::Y, Rotation::Y, Rotation::Z],
+                Surface::U => vec![Rotation::Yi, Rotation::Xi],
+                Surface::D => vec![Rotation::Y, Rotation::X],
+                _ => panic!(),
+            },
+
+        }
     }
 }
 
@@ -221,6 +322,16 @@ impl Perm {
         }).collect();
 
         Perm::join(perms)
+    }
+
+    fn oriented(&self, o: &Orientation) -> Perm {
+        match &o.u {
+            Surface::U => match &o.f {
+                Surface::F => self.clone(),
+                _ => self.clone()
+            },
+            _ => self.clone()
+        }
     }
 }
 
