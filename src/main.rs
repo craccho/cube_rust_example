@@ -11,11 +11,25 @@ type EdgeFlip = u8;
 type Corner = [CornerSticker; 8];
 type Edge = [EdgeSticker; 12];
 
+#[derive(Clone)]
 enum Rotation {
     X, Xi, Y, Yi, Z, Zi,
 }
 
-fn rotate_cs(s: u8, r: &Rotation) -> CornerSticker {
+impl Rotation {
+    fn inverse(self) -> Rotation {
+        match self {
+            Rotation::X => Rotation::Xi,
+            Rotation::Xi => Rotation::X,
+            Rotation::Y => Rotation::Yi,
+            Rotation::Yi => Rotation::Y,
+            Rotation::Z => Rotation::Zi,
+            Rotation::Zi => Rotation::Z,
+        }
+    }
+}
+
+fn rotate_sticker(s: u8, r: &Rotation) -> u8 {
     match r {
         Rotation::X => [
             4, 5, 6, 7,
@@ -187,6 +201,10 @@ impl Orientation {
 
         }
     }
+
+    fn reverse(&self) -> Vec<Rotation> {
+        self.rotation().iter().rev().cloned().map(Rotation::inverse).collect()
+    }
 }
 
 #[derive(PartialEq,Clone)]
@@ -251,7 +269,7 @@ impl Perm {
         cube.perm(turn.name)
     }
 
-    fn turns() -> HashMap<&'static str, Perm> {
+    fn turns(gen: u8) -> HashMap<&'static str, Perm> {
         let mut turns = HashMap::new();
 
         let u = Perm::from_turn(&Turn::U);
@@ -273,23 +291,29 @@ impl Perm {
         let li = l.inverse("L'");
         let l2 = l.double();
 
-        turns.insert("U", u);
-        turns.insert("U'", ui);
+        if gen < 3 {
+            if gen < 2 {
+                if gen < 1 {
+                    turns.insert("F", f);
+                    turns.insert("F'", fi);
+                    turns.insert("B", b);
+                    turns.insert("B'", bi);
+                }
+                turns.insert("R", r);
+                turns.insert("R'", ri);
+                turns.insert("L", l);
+                turns.insert("L'", li);
+            }
+            turns.insert("U", u);
+            turns.insert("U'", ui);
+            turns.insert("D", d);
+            turns.insert("D'", di);
+        }
         turns.insert("U2", u2);
-        turns.insert("D", d);
-        turns.insert("D'", di);
         turns.insert("D2", d2);
-        turns.insert("R", r);
-        turns.insert("R'", ri);
         turns.insert("R2", r2);
-        turns.insert("L", l);
-        turns.insert("L'", li);
         turns.insert("L2", l2);
-        turns.insert("F", f);
-        turns.insert("F'", fi);
         turns.insert("F2", f2);
-        turns.insert("B", b);
-        turns.insert("B'", bi);
         turns.insert("B2", b2);
 
         turns
@@ -314,7 +338,7 @@ impl Perm {
         let re = Regex::new(r"([UDFBRL]['2]?)").unwrap();
         let perm: Perm = Perm::new();
 
-        let turns = Perm::turns();
+        let turns = Perm::turns(0);
 
         let perms = re.captures_iter(scramble).map(|cap| {
             println!("{}", &cap[1]);
@@ -324,15 +348,6 @@ impl Perm {
         Perm::join(perms)
     }
 
-    fn oriented(&self, o: &Orientation) -> Perm {
-        match &o.u {
-            Surface::U => match &o.f {
-                Surface::F => self.clone(),
-                _ => self.clone()
-            },
-            _ => self.clone()
-        }
-    }
 }
 
 #[derive(Debug,Hash,Eq,PartialEq)]
@@ -490,6 +505,12 @@ impl Cube {
 
     fn rotate(&mut self, rotation: &Rotation) {
         self.orientation.rotate(rotation);
+        for i in 0..(self.corner.len()) {
+            self.corner[i] = rotate_sticker(self.corner[i], rotation);
+        }
+        for i in 0..(self.edge.len()) {
+            self.edge[i] = rotate_sticker(self.edge[i], rotation);
+        }
     }
 
     fn solved(&self) -> bool {
@@ -539,19 +560,39 @@ impl Cube {
         eo
     }
 
+    fn co(&self) -> u8 {
+        let mut cube = self.clone();
+        let mut co = 0;
+        for &c in cube.corner.iter() {
+            co += if Cube::CP[c as usize].1 > 0 { 1 } else { 0 };
+        }
+        co
+    }
+
     fn solve(&self) -> Vec<Perm> {
         let mut solutions: Vec<Vec<&Perm>> = Vec::new();
-        let single_turns: Vec<Perm> = Perm::turns().values().cloned().collect();
+        let single_turns: Vec<Perm> = Perm::turns(0).values().cloned().collect();
+        let eo_turns: Vec<Perm> = Perm::turns(1).values().cloned().collect();
+        let dr_turns: Vec<Perm> = Perm::turns(2).values().cloned().collect();
+        let base_turns = [&single_turns, &eo_turns, &dr_turns];
         let ip = Perm::new();
         let initial = vec![&ip];
-        let mut perms = vec![(initial, self.clone())];
+        let mut perms = vec![(initial, self.clone(), 0)];
         while solutions.len() == 0 {
             let mut nexts = Vec::new();
-            for (turns, cube) in &perms {
+            for (turns, cube, mut gen) in &perms {
+                if gen == 0 && cube.eo() == 0 {
+                    gen = 1;
+                    println!("EO!");
+                }
+                if gen == 1 && cube.co() == 0 {
+                    gen = 2;
+                    println!("DR!");
+                }
                 if cube.solved() {
                     solutions.push(turns.to_vec());
                 } else {
-                    for turn in &single_turns {
+                    for turn in base_turns[gen] {
                         let k1 = turn.kind();
                         let k2 = turns.last().unwrap().kind();
                         if k1.0 == k2.0 { continue; }
@@ -560,17 +601,30 @@ impl Cube {
                             if k1.0 == k2.0 { continue; }
                         }
                         let mut cube = cube.clone();
+                        let bo = if gen == 0 { cube.eo() } else { cube.co() };
                         cube.apply(&turn);
+                        let ao = if gen == 0 { cube.eo() } else { cube.co() };
                         let mut nt = turns.to_vec();
-                        nt.push(turn);
+                        if ao <= bo || ao - bo < 4 {
+                            nt.push(turn);
+                            nexts.push((nt.to_vec(), cube, gen));
+                        }
                         // println!("{}", nt.iter().map(|t| t.name.clone().unwrap_or_default()).collect::<Vec<String>>().join(" "));
-                        nexts.push((nt, cube));
                     }
                 }
             }
             perms = nexts
         }
         solutions[0].iter().map(|&x| x.clone()).collect()
+    }
+
+    fn orient(&mut self, o: &Orientation) {
+        let mut rotation = self.orientation.reverse();
+        rotation.append(&mut o.rotation());
+
+        for r in &rotation {
+            self.rotate(r);
+        }
     }
 }
 
