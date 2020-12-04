@@ -319,18 +319,18 @@ impl Perm {
         turns
     }
 
-    fn kind(&self) -> (u8, u8) {
+    fn kind(&self) -> Option<(Surface, u8)> {
         match &self.name {
             Some(name) => match name.chars().next().unwrap() {
-                'U' => (1, 1),
-                'D' => (2, 1),
-                'R' => (3, 2),
-                'L' => (4, 2),
-                'F' => (5, 3),
-                'B' => (6, 3),
-                _ => (0, 0)
+                'U' => Some((Surface::U, 1)),
+                'D' => Some((Surface::D, 1)),
+                'R' => Some((Surface::R, 2)),
+                'L' => Some((Surface::L, 2)),
+                'F' => Some((Surface::F, 3)),
+                'B' => Some((Surface::B, 3)),
+                _ => None
             },
-            None => (0, 0)
+            None => None
         }
     }
 
@@ -446,6 +446,26 @@ impl Cube {
           (6, 0), ( 9, 1), ( 7, 0), ( 3, 1),
           (7, 1), ( 8, 1), ( 4, 1), ( 0, 1),
           (8, 0), ( 9, 0), (10, 0), (11, 0) ];
+
+    fn face_solved(&self, s: &Surface) -> bool {
+        let is = match s {
+            Surface::U => ([ 0, 1, 2, 3], [ 0, 1, 2, 3]),
+            Surface::D => ([ 4, 5, 6, 7], [ 8, 9, 10, 11]),
+            Surface::R => ([ 0, 3, 4, 7], [ 0, 4, 7, 8]),
+            Surface::L => ([ 1, 2, 5, 6], [ 2, 5, 6, 10]),
+            Surface::F => ([ 0, 1, 6, 7], [ 1, 4, 5, 11]),
+            Surface::B => ([ 2, 3, 4, 5], [ 3, 6, 7, 9]),
+        };
+        for i in 0..4 {
+            if
+                self.corner[is.0[i]] != Cube::SOLVED.corner[is.0[i]] ||
+                self.edge[is.0[i]] != Cube::SOLVED.edge[is.0[i]] {
+                    return false;
+                }
+        }
+
+        true
+    }
 
     fn turn(&mut self, t: &Turn) {
         let l = t.cp.len();
@@ -578,10 +598,13 @@ impl Cube {
         let ip = Perm::new();
         let initial = vec![&ip];
         let mut perms = vec![(initial, self.clone(), 0)];
+        let mut ct = 0;
         while solutions.len() == 0 {
+            println!("{}", ct);
             let mut nexts = Vec::new();
             for (turns, cube, mut gen) in &perms {
-                if gen == 0 && cube.eo() == 0 {
+                let eo = cube.eo();
+                if gen == 0 && eo == 0 {
                     gen = 1;
                     println!("EO!");
                 }
@@ -589,17 +612,34 @@ impl Cube {
                     gen = 2;
                     println!("DR!");
                 }
+                if ct >= 8 && gen == 0 {
+                    println!("Too long to EO!");
+                    continue;
+                }
                 if cube.solved() {
                     solutions.push(turns.to_vec());
                 } else {
                     for turn in base_turns[gen] {
-                        let k1 = turn.kind();
-                        let k2 = turns.last().unwrap().kind();
-                        if k1.0 == k2.0 { continue; }
-                        if turns.len() > 1 && k1.1 == k2.1 {
-                            let k2 = turns[turns.len() - 2].kind();
-                            if k1.0 == k2.0 { continue; }
+                        let k1 = turn.kind().unwrap();
+                        if cube.face_solved(&k1.0) {
+                            continue;
                         }
+                        let k2 = turns.last().unwrap().kind();
+                        match k2 {
+                            Some(k2) => {
+                                if k1.0 == k2.0 { continue; };
+                                if turns.len() > 1 && k1.1 == k2.1 {
+                                    let k2 = turns[turns.len() - 2].kind();
+                                    match k2 {
+                                        Some(k2) => {
+                                            if k1.0 == k2.0 { continue; };
+                                        },
+                                        None => (),
+                                    };
+                                }
+                            },
+                            None => (),
+                        };
                         let mut cube = cube.clone();
                         let bo = if gen == 0 { cube.eo() } else { cube.co() };
                         cube.apply(&turn);
@@ -613,6 +653,7 @@ impl Cube {
                     }
                 }
             }
+            ct += 1;
             perms = nexts
         }
         solutions[0].iter().map(|&x| x.clone()).collect()
