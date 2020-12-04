@@ -599,65 +599,81 @@ impl Cube {
         let initial = vec![&ip];
         let mut perms = vec![(initial, self.clone(), 0)];
         let mut ct = 0;
+        let mut tick = 0;
+        let mut nl = false;
+        if self.solved() {
+            solutions.push(vec![&ip]);
+        }
         while solutions.len() == 0 {
+            ct += 1;
+            crif(&mut nl);
             println!("{}", ct);
             let mut nexts = Vec::new();
             for (turns, cube, mut gen) in &perms {
                 let eo = cube.eo();
                 if gen == 0 && eo == 0 {
                     gen = 1;
+                    crif(&mut nl);
+                    println!("{}", p2s(&turns));
                     println!("EO!");
                 }
                 if gen == 1 && cube.co() == 0 {
                     gen = 2;
+                    crif(&mut nl);
+                    println!("{}", p2s(&turns));
                     println!("DR!");
                 }
                 if ct >= 8 && gen == 0 {
+                    crif(&mut nl);
                     println!("Too long to EO!");
                     continue;
                 }
-                if cube.solved() {
-                    solutions.push(turns.to_vec());
-                } else {
-                    for turn in base_turns[gen] {
-                        let k1 = turn.kind().unwrap();
-                        if cube.face_solved(&k1.0) {
-                            continue;
+                for turn in base_turns[gen] {
+                    let k1 = turn.kind().unwrap();
+                    if cube.face_solved(&k1.0) {
+                        continue;
+                    }
+                    let k2 = turns.last().unwrap().kind();
+                    match k2 {
+                        Some(k2) => {
+                            if k1.0 == k2.0 { continue; };
+                            if turns.len() > 1 && k1.1 == k2.1 {
+                                let k2 = turns[turns.len() - 2].kind();
+                                match k2 {
+                                    Some(k2) => {
+                                        if k1.0 == k2.0 { continue; };
+                                    },
+                                    None => (),
+                                };
+                            }
+                        },
+                        None => (),
+                    };
+                    let mut cube = cube.clone();
+                    let bo = if gen == 0 { cube.eo() } else { cube.co() };
+                    cube.apply(&turn);
+                    let ao = if gen == 0 { cube.eo() } else { cube.co() };
+                    let mut nt = turns.to_vec();
+                    if ao <= bo || ao - bo < 4 {
+                        nt.push(turn);
+                        if cube.solved() {
+                            solutions.push(nt.to_vec());
+                            break;
                         }
-                        let k2 = turns.last().unwrap().kind();
-                        match k2 {
-                            Some(k2) => {
-                                if k1.0 == k2.0 { continue; };
-                                if turns.len() > 1 && k1.1 == k2.1 {
-                                    let k2 = turns[turns.len() - 2].kind();
-                                    match k2 {
-                                        Some(k2) => {
-                                            if k1.0 == k2.0 { continue; };
-                                        },
-                                        None => (),
-                                    };
-                                }
-                            },
-                            None => (),
-                        };
-                        let mut cube = cube.clone();
-                        let bo = if gen == 0 { cube.eo() } else { cube.co() };
-                        cube.apply(&turn);
-                        let ao = if gen == 0 { cube.eo() } else { cube.co() };
-                        let mut nt = turns.to_vec();
-                        if ao <= bo || ao - bo < 4 {
-                            nt.push(turn);
-                            nexts.push((nt.to_vec(), cube, gen));
-                        }
-                        // println!("{}", nt.iter().map(|t| t.name.clone().unwrap_or_default()).collect::<Vec<String>>().join(" "));
+                        nexts.push((nt.to_vec(), cube, gen));
+                    }
+                    tick += 1;
+                    if tick % 100 == 0 {
+                        print!("{}         \r", p2s(&nt));
+                        nl = true;
                     }
                 }
             }
-            ct += 1;
             perms = nexts
         }
         solutions[0].iter().map(|&x| x.clone()).collect()
     }
+
 
     fn orient(&mut self, o: &Orientation) {
         let mut rotation = self.orientation.reverse();
@@ -666,6 +682,17 @@ impl Cube {
         for r in &rotation {
             self.rotate(r);
         }
+    }
+}
+
+fn p2s(turns: &Vec<&Perm>) -> String {
+    turns.iter().map(|t| t.name.clone().unwrap_or_default()).collect::<Vec<String>>().join(" ")
+}
+
+fn crif(nl: &mut bool) {
+    if *nl {
+        print!("                                                           \r");
+        *nl = false;
     }
 }
 
