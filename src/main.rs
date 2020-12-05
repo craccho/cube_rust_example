@@ -648,41 +648,79 @@ impl Cube {
         co
     }
 
-    fn solve<'a>(&self, base_turns: &'a [&Vec<Perm>; 3]) -> Solution<'a> {
+    fn be(&self) -> u8 {
+        (4..8).map(|ep| [1,1,1,1, 0,1,0,1, 1,1,1,1, 0,1,0,1, 1,1,1,1, 1,1,1,1,][self.edge[ep] as usize]).sum()
+    }
+
+    fn htr(&self) -> bool {
+        if (self.co() > 0) {
+            false
+        } else {
+            (0..8).all(|i| {
+                Cube::CP[self.corner[i] as usize].0 % 2 == i % 2
+            }) && self.be() == 0 && {
+                let be1: u8 = [1, 3, 9, 11].iter().map(|&i| [1,0,1,0, 1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1, 1,0,1,0,][self.edge[i] as usize]).sum();
+                be1 == 0 && {
+                    let be2: u8 = [0, 2, 8, 10].iter().map(|&i| [0,1,0,1, 1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1, 0,1,0,1,][self.edge[i] as usize]).sum();
+                    be2 == 0
+                }
+            }
+        }
+    }
+
+    fn solve<'a>(&self, initial: (Vec<&'a Perm>, Vec<&'a Perm>), base_turns: &'a [&Vec<Perm>; 4], limit: &mut usize) -> Vec<Solution<'a>> {
         let mut solutions: Vec<Solution<'a>> = Vec::new();
-        let initial = vec![];
-        let mut perms: Vec<Solution<'a>> = vec![(initial.to_vec(), initial.to_vec(), self.clone(), 0, self.eo())];
+        let mut perms: Vec<Solution<'a>> = vec![(initial.0.to_vec(), initial.1.to_vec(), self.clone(), 0, self.eo())];
         let mut ct = 0;
         let mut tick = 0;
         let mut nl = false;
         if self.solved() {
             solutions.push(perms.last().unwrap().clone());
         }
-        let var_name = while solutions.len() == 0 {
+        while solutions.len() == 0 {
             ct += 1;
             crif(&mut nl);
-            println!("{}", ct);
             let mut nexts: Vec<Solution<'a>> = Vec::new();
+            println!("{} limit: {}", ct, limit);
+            if perms.len() == 0 {
+                break;
+            }
             for (turns, inv_turns, cube, mut gen, no) in &perms {
+                let len = turns.len() + inv_turns.len();
+                if len > *limit {
+                    continue;
+                }
                 if gen == 0 && *no == 0 {
                     gen = 1;
                     crif(&mut nl);
-                    println!("{} ({})", p2s(turns), p2s(inv_turns));
+                    println!("{} ({})", p2s(turns), i2s(inv_turns));
                     println!("EO!");
                 }
-                if gen == 1 && cube.co() == 0 {
+                if gen == 1 && *no == 0 && cube.be() == 0 {
                     gen = 2;
                     crif(&mut nl);
-                    println!("{} ({})", p2s(turns), p2s(inv_turns));
+                    println!("{} ({})", p2s(turns), i2s(inv_turns));
                     println!("DR!");
                 }
-                if ct >= 8 && gen == 0 {
+                if gen == 2 && cube.htr() {
+                    gen = 3;
+                    crif(&mut nl);
+                    println!("{} ({})", p2s(turns), i2s(inv_turns));
+                    println!("HTR!");
+                }
+                if len >= 8 && gen == 0 {
                     crif(&mut nl);
                     println!("Too long to EO!");
                     continue;
                 }
-                for turn in base_turns[gen] {
-                    for &inv in [false, true].iter() {
+                if len >= 30 {
+                    continue;
+                }
+                for &inv in [false, true].iter() {
+                    for turn in base_turns[gen] {
+                        if len > *limit {
+                            continue;
+                        }
                         let the_turns = if inv { inv_turns } else { turns };
                         let k1 = turn.kind().unwrap();
                         if cube.face_solved(&k1.0) {
@@ -704,42 +742,59 @@ impl Cube {
                             None => (),
                         };
                         let mut cube = cube.clone();
-                        let bo = if gen == 0 { cube.eo() } else { cube.co() };
+                        let bo = *no;
                         if inv {
                             cube.inv_apply(&turn);
                         } else {
                             cube.apply(&turn);
                         }
                         let ao = if gen == 0 { cube.eo() } else { cube.co() };
-                        let mut nt: Vec<&'a Perm> = the_turns.to_vec();
-                        if ao <= bo || ao <= 4 {
-                            nt.push(turn);
+                        let mut next_turns: Vec<&'a Perm> = the_turns.to_vec();
+                        if
+                            gen == 0 && (ao <= bo || ao <= 4) ||
+                            gen >= 1 && (ao <= bo || ao <= 4)
+                        {
+                            next_turns.push(turn);
                             let solved = cube.solved();
-                            if inv {
-                                nexts.push((turns.to_vec(), nt.to_vec(), cube, gen, ao));
+                            let skeleton = if inv {
+                                (turns.to_vec(), next_turns.to_vec(), cube.clone(), gen, ao)
                             } else {
-                                nexts.push((nt.to_vec(), inv_turns.to_vec(), cube, gen, ao));
-                            }
+                                (next_turns.to_vec(), inv_turns.to_vec(), cube.clone(), gen, ao)
+                            };
                             if solved {
-                                solutions.push(nexts.last().unwrap().clone());
-                                break;
+                                let len = skeleton.0.len() + skeleton.1.len();
+                                if len < *limit {
+                                    *limit = len;
+                                }
+                                crif(&mut nl);
+                                println!("Solution: {} ({})        \r", p2s(&skeleton.0), i2s(&skeleton.1));
+                                solutions.push(skeleton);
+                            } else {
+                                if
+                                    (gen == 0 && ao == 0) || // become EO
+                                    (gen == 1 && ao == 0 && cube.be() == 0) || // become DR
+                                    (gen == 2 && cube.htr()) // become HTR
+                                {
+                                    let l = (skeleton.0, skeleton.1);
+                                    let mut sols = cube.solve(l, base_turns, limit);
+                                    solutions.append(&mut sols);
+                                } else {
+                                    nexts.push(skeleton);
+                                }
                             }
                         }
                         tick += 1;
                         if tick % 100 == 0 {
-                            print!("{} ({})        \r", p2s(&nexts.last().unwrap().0), p2s(&nexts.last().unwrap().1));
+                            print!("{} ({})        \r", p2s(&nexts.last().unwrap().0), i2s(&nexts.last().unwrap().1));
                             nl = true;
                         }
-                    }
-                    if solutions.len() > 0 {
-                        break;
                     }
                 }
             }
             perms = nexts
         };
 
-        solutions[0].clone()
+        solutions
     }
 
 
@@ -757,9 +812,13 @@ fn p2s(turns: &Vec<&Perm>) -> String {
     turns.iter().map(|t| t.name.clone().unwrap_or_default()).collect::<Vec<String>>().join(" ")
 }
 
+fn i2s(turns: &Vec<&Perm>) -> String {
+    turns.iter().rev().cloned().map(|t| t.name.clone().unwrap_or_default()).collect::<Vec<String>>().join(" ")
+}
+
 fn crif(nl: &mut bool) {
     if *nl {
-        print!("                                                           \r");
+        print!("                                                                                 \r");
         *nl = false;
     }
 }
@@ -843,7 +902,8 @@ fn main() {
         let single_turns: Vec<Perm> = Perm::turns(0).values().cloned().collect();
         let eo_turns: Vec<Perm> = Perm::turns(1).values().cloned().collect();
         let dr_turns: Vec<Perm> = Perm::turns(2).values().cloned().collect();
-        let base_turns = [&single_turns, &eo_turns, &dr_turns];
+        let htr_turns: Vec<Perm> = Perm::turns(3).values().cloned().collect();
+        let base_turns = [&single_turns, &eo_turns, &dr_turns, &htr_turns];
 
         loop {
             ct += 1;
@@ -852,7 +912,13 @@ fn main() {
                 println!("initial state: {}", cube);
             }
 
-            let solution = cube.solve(&base_turns);
+            let initial = (vec![], vec![]);
+            let solutions = &cube.solve(initial, &base_turns, &mut 99);
+            let lens: Vec<usize> = solutions.iter().map(|s| s.0.len() + s.1.len()).collect();
+            let i = (0..(lens.len())).min_by(|&i, &j| lens[i].cmp(&lens[j])).unwrap();
+            let solution = &solutions[i];
+
+
             let mut st: Vec<Perm> = solution.0.iter().map(|&x| x.clone()).collect();
             let inv = &mut solution.1.iter().rev().cloned().map(|x| x.clone()).collect();
             st.append(inv);
