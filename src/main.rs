@@ -11,7 +11,7 @@ type EdgeFlip = u8;
 type Corner = [CornerSticker; 8];
 type Edge = [EdgeSticker; 12];
 
-type Solution = (Vec<Perm>, Vec<Perm>, Cube, usize, u8);
+type Solution<'a> = (Vec<&'a Perm>, Vec<&'a Perm>, Cube, usize, u8);
 
 
 #[derive(Clone)]
@@ -648,26 +648,21 @@ impl Cube {
         co
     }
 
-    fn solve(&self) -> Solution {
-        let mut solutions: Vec<Solution> = Vec::new();
-        let single_turns: Vec<Perm> = Perm::turns(0).values().cloned().collect();
-        let eo_turns: Vec<Perm> = Perm::turns(1).values().cloned().collect();
-        let dr_turns: Vec<Perm> = Perm::turns(2).values().cloned().collect();
-        let base_turns = [&single_turns, &eo_turns, &dr_turns];
-        let ip = Perm::new();
-        let initial = vec![ip];
-        let mut perms: Vec<Solution> = vec![(initial.to_vec(), initial.to_vec(), self.clone(), 0, self.eo())];
+    fn solve<'a>(&self, base_turns: &'a [&Vec<Perm>; 3]) -> Solution<'a> {
+        let mut solutions: Vec<Solution<'a>> = Vec::new();
+        let initial = vec![];
+        let mut perms: Vec<Solution<'a>> = vec![(initial.to_vec(), initial.to_vec(), self.clone(), 0, self.eo())];
         let mut ct = 0;
         let mut tick = 0;
         let mut nl = false;
         if self.solved() {
             solutions.push(perms.last().unwrap().clone());
         }
-        while solutions.len() == 0 {
+        let var_name = while solutions.len() == 0 {
             ct += 1;
             crif(&mut nl);
             println!("{}", ct);
-            let mut nexts = Vec::new();
+            let mut nexts: Vec<Solution<'a>> = Vec::new();
             for (turns, inv_turns, cube, mut gen, no) in &perms {
                 if gen == 0 && *no == 0 {
                     gen = 1;
@@ -693,11 +688,10 @@ impl Cube {
                         if cube.face_solved(&k1.0) {
                             continue;
                         }
-                        let k2 = the_turns.last().unwrap().kind();
-                        match k2 {
+                        match the_turns.last().map(|t| t.kind()).flatten() {
                             Some(k2) => {
                                 if k1.0 == k2.0 { continue; };
-                                if turns.len() > 1 && k1.1 == k2.1 {
+                                if the_turns.len() > 1 && k1.1 == k2.1 {
                                     let k2 = the_turns[the_turns.len() - 2].kind();
                                     match k2 {
                                         Some(k2) => {
@@ -717,9 +711,9 @@ impl Cube {
                             cube.apply(&turn);
                         }
                         let ao = if gen == 0 { cube.eo() } else { cube.co() };
-                        let mut nt = the_turns.to_vec();
+                        let mut nt: Vec<&'a Perm> = the_turns.to_vec();
                         if ao <= bo || ao <= 4 {
-                            nt.push(turn.clone());
+                            nt.push(turn);
                             let solved = cube.solved();
                             if inv {
                                 nexts.push((turns.to_vec(), nt.to_vec(), cube, gen, ao));
@@ -743,7 +737,7 @@ impl Cube {
                 }
             }
             perms = nexts
-        }
+        };
 
         solutions[0].clone()
     }
@@ -759,7 +753,7 @@ impl Cube {
     }
 }
 
-fn p2s(turns: &Vec<Perm>) -> String {
+fn p2s(turns: &Vec<&Perm>) -> String {
     turns.iter().map(|t| t.name.clone().unwrap_or_default()).collect::<Vec<String>>().join(" ")
 }
 
@@ -846,6 +840,11 @@ fn main() {
 
         println!("sequence: {:?}", seq);
 
+        let single_turns: Vec<Perm> = Perm::turns(0).values().cloned().collect();
+        let eo_turns: Vec<Perm> = Perm::turns(1).values().cloned().collect();
+        let dr_turns: Vec<Perm> = Perm::turns(2).values().cloned().collect();
+        let base_turns = [&single_turns, &eo_turns, &dr_turns];
+
         loop {
             ct += 1;
             cube.apply(&seq);
@@ -853,9 +852,9 @@ fn main() {
                 println!("initial state: {}", cube);
             }
 
-            let solution = cube.solve();
-            let mut st: Vec<Perm> = solution.0;
-            let inv = &mut solution.1.iter().rev().cloned().collect();
+            let solution = cube.solve(&base_turns);
+            let mut st: Vec<Perm> = solution.0.iter().map(|&x| x.clone()).collect();
+            let inv = &mut solution.1.iter().rev().cloned().map(|x| x.clone()).collect();
             st.append(inv);
 
             let sol = Perm::join(st);
