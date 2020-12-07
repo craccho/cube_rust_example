@@ -502,7 +502,7 @@ impl Cube {
         for i in 0..4 {
             if
                 self.corner[is.0[i]] != Cube::SOLVED.corner[is.0[i]] ||
-                self.edge[is.0[i]] != Cube::SOLVED.edge[is.0[i]] {
+                self.edge[is.1[i]] != Cube::SOLVED.edge[is.1[i]] {
                     return false;
                 }
         }
@@ -570,9 +570,10 @@ impl Cube {
         let p = p.inverse(None);
         let mut cm = [(0, 0); 24];
         for i in 0..8 {
-            cm[self.corner[i] as usize] = (i, 0);
-            cm[Cube::CT[1][self.corner[i] as usize] as usize] = (i, 1);
-            cm[Cube::CT[2][self.corner[i] as usize] as usize] = (i, 2);
+            let c = self.corner[i] as usize;
+            cm[c] = (i, 0);
+            cm[Cube::CT[1][c] as usize] = (i, 1);
+            cm[Cube::CT[2][c] as usize] = (i, 2);
         }
         let l = p.cp.len();
         for i in 0..l {
@@ -666,7 +667,7 @@ impl Cube {
     }
 
     fn eo(&self) -> u8 {
-        let cube = self.clone();
+        let cube = &self;
         let mut eo = 0;
         for &e in cube.edge.iter() {
             eo += Cube::EP[e as usize].1;
@@ -690,11 +691,11 @@ impl Cube {
     fn trigger(&self) -> bool {
         let table = [
             [
-            [(0, 2), (3, 1), (4, 2), (7, 1)],
+            [(0, 1), (3, 2), (4, 1), (7, 2)],
             [(4, 1), (5, 0), (6, 0), (7, 1)],
             ],
             [
-            [(1, 1), (2, 2), (5, 1), (6, 2)],
+            [(1, 2), (2, 1), (5, 2), (6, 1)],
             [(4, 0), (5, 1), (6, 1), (7, 0)],
             ],
         ];
@@ -734,6 +735,7 @@ impl Cube {
         let mut ct = 0;
         let mut tick = 0;
         let mut nl = false;
+        let p2g = [0, 1, 2, 4, 2, 3];
         if self.solved() {
             solutions.push(perms.last().unwrap().clone());
         }
@@ -744,18 +746,15 @@ impl Cube {
                 break;
             }
             for (turns, inv_turns, cube, phase, no) in &perms {
-                let mut phase = *phase as u8;
+                let mut phase = *phase;
                 let mut no = *no;
                 let len = turns.len() + inv_turns.len();
-                let mut gen = 0;
                 if len >= *limit {
                     continue;
                 }
                 if phase == 0 {
-                    gen = 0;
                     if no == 0 {
                         phase = 1;
-                        gen = 1;
                         crif(&mut nl);
                         println!("{} ({})", p2s(turns), i2s(inv_turns));
                         println!("EO!");
@@ -766,7 +765,6 @@ impl Cube {
                     let be = cube.be();
                     if no == 0 && be == 0 {
                         phase = 4;
-                        gen = 2;
                         crif(&mut nl);
                         println!("{} ({})", p2s(turns), i2s(inv_turns));
                         println!("DR!");
@@ -775,7 +773,6 @@ impl Cube {
                         no == 4 && be == 2
                     {
                         phase = 2;
-                        gen = 2;
                         crif(&mut nl);
                         println!("{} ({})", p2s(turns), i2s(inv_turns));
                         println!("Phase 2");
@@ -784,7 +781,6 @@ impl Cube {
                 if phase == 2 {
                     if cube.trigger() {
                         phase = 3;
-                        gen = 4;
                         crif(&mut nl);
                         println!("{} ({})", p2s(turns), i2s(inv_turns));
                         println!("DR Trigger!");
@@ -794,7 +790,6 @@ impl Cube {
                 if phase == 3 {
                     if cube.be() == 0 && no == 0 {
                         phase = 4;
-                        gen = 2;
                         crif(&mut nl);
                         println!("{} ({})", p2s(turns), i2s(inv_turns));
                         println!("DR!");
@@ -803,7 +798,6 @@ impl Cube {
                 }
                 if phase == 4 && cube.htr() {
                     phase = 5;
-                    gen = 3;
                     crif(&mut nl);
                     println!("{} ({})", p2s(turns), i2s(inv_turns));
                     println!("HTR!");
@@ -827,6 +821,7 @@ impl Cube {
                 }
                 */
                 let mut bf = false;
+                let gen = p2g[phase];
                 for turn in base_turns[gen] {
                     for &inv in {
                         if phase == 5 { vec![false] } else { vec![false, true] }
@@ -863,6 +858,7 @@ impl Cube {
                         }
                         let ao = if phase == 0 { cube.eo() } else { cube.co() };
                         let mut next_turns: Vec<&'a Perm> = the_turns.to_vec();
+                        assert!(phase == 2 && (ao == bo) || phase != 2, "{} {}", turn, gen);
                         if
                             phase == 0 && (ao <= bo || ao <= 4) ||
                             // phase == 1 && (ao <= bo || ao <= 4) ||
@@ -892,6 +888,7 @@ impl Cube {
                             } else {
                                 if
                                     (phase == 0 && ao == 0) || // become EO
+                                    (phase == 1 && ao == 4 && cube.be() == 2) || // become phase2
                                     ((phase == 1 || phase == 3) && ao == 0 && cube.be() == 0) || // become DR
                                     // (phase == 5) || // HTR
                                     (phase == 4 && cube.htr()) || // become HTR
@@ -907,7 +904,7 @@ impl Cube {
                         }
                         tick += 1;
                         if tick % 100 == 0 {
-                            print!("{} ({})        \r", p2s(&nexts.last().unwrap().0), i2s(&nexts.last().unwrap().1));
+                            print!("p:{}, gen:{}, co:{}, be:{}, {} ({})        \r", phase, gen, cube.co(), cube.be(), p2s(&nexts.last().unwrap().0), i2s(&nexts.last().unwrap().1));
                             nl = true;
                         }
                     }
