@@ -353,7 +353,6 @@ impl Perm {
         let turns = Perm::turns(0);
 
         let perms = re.captures_iter(scramble).map(|cap| {
-            println!("{}", &cap[1]);
             turns.get(&cap[1]).unwrap_or(&perm).clone()
         }).collect();
 
@@ -690,29 +689,30 @@ impl Cube {
 
     fn trigger(&self) -> bool {
         let table = [
-            [
+            (
             [(0, 1), (3, 2), (4, 1), (7, 2)],
-            [(4, 1), (5, 0), (6, 0), (7, 1)],
-            ],
-            [
+            [(4, 1), (5, 0), (6, 0), (7, 1), (0, 0), (8, 0)],
+            ),
+            (
             [(1, 2), (2, 1), (5, 2), (6, 1)],
-            [(4, 0), (5, 1), (6, 1), (7, 0)],
-            ],
+            [(4, 0), (5, 1), (6, 1), (7, 0), (2, 0), (10, 0)],
+            ),
         ];
         table.iter().any(|pat| {
-            pat[0].iter().all(|cp| {
-                Cube::CP[self.corner[cp.0] as usize].0 == cp.1
+            pat.0.iter().all(|cp| {
+                Cube::CP[self.corner[cp.0] as usize].1 == cp.1
             }) &&
-            pat[1].iter().all(|ep| {
+            pat.1.iter().all(|ep| {
                 [1,1,1,1, 0,1,0,1, 1,1,1,1, 0,1,0,1, 1,1,1,1, 1,1,1,1,][self.edge[ep.0] as usize] == ep.1
             })
         })
     }
 
     fn htr(&self) -> bool {
-        if (self.co() > 0) {
+        if self.co() > 0 {
             false
         } else {
+            self.cp() &&
             (0..8).all(|i| {
                 Cube::CP[self.corner[i] as usize].0 % 2 == i % 2
             }) && self.be() == 0 && {
@@ -729,10 +729,9 @@ impl Cube {
         (0..8).all(|i| Cube::CP[self.corner[i] as usize].0 == i)
     }
 
-    fn solve<'a>(&self, initial: (Vec<&'a Perm>, Vec<&'a Perm>), base_turns: &'a [&Vec<Perm>; 5], limit: &mut usize) -> Vec<Solution<'a>> {
+    fn solve<'a>(&self, initial: (Vec<&'a Perm>, Vec<&'a Perm>), base_turns: &'a [&Vec<Perm>; 5], limit: &mut usize, ip: usize) -> Vec<Solution<'a>> {
         let mut solutions: Vec<Solution<'a>> = Vec::new();
-        let mut perms: Vec<Solution<'a>> = vec![(initial.0.to_vec(), initial.1.to_vec(), self.clone(), 0, self.eo())];
-        let mut ct = 0;
+        let mut perms: Vec<Solution<'a>> = vec![(initial.0.to_vec(), initial.1.to_vec(), self.clone(), ip, if ip == 0 { self.eo() } else { self.co() })];
         let mut tick = 0;
         let mut nl = false;
         let p2g = [0, 1, 2, 4, 2, 3];
@@ -740,7 +739,6 @@ impl Cube {
             solutions.push(perms.last().unwrap().clone());
         }
         while solutions.len() == 0 {
-            ct += 1;
             let mut nexts: Vec<Solution<'a>> = Vec::new();
             if perms.len() == 0 {
                 break;
@@ -867,9 +865,9 @@ impl Cube {
                             next_turns.push(turn);
                             let solved = cube.solved();
                             let skeleton = if inv {
-                                (turns.to_vec(), next_turns.to_vec(), cube.clone(), phase as usize, ao)
+                                (turns.to_vec(), next_turns.to_vec(), cube.clone(), phase, ao)
                             } else {
-                                (next_turns.to_vec(), inv_turns.to_vec(), cube.clone(), phase as usize, ao)
+                                (next_turns.to_vec(), inv_turns.to_vec(), cube.clone(), phase, ao)
                             };
                             if solved {
                                 let len = skeleton.0.len() + skeleton.1.len();
@@ -889,13 +887,14 @@ impl Cube {
                                 if
                                     (phase == 0 && ao == 0) || // become EO
                                     (phase == 1 && ao == 4 && cube.be() == 2) || // become phase2
+                                    (phase == 2 && cube.trigger()) || // become trigger
                                     ((phase == 1 || phase == 3) && ao == 0 && cube.be() == 0) || // become DR
                                     // (phase == 5) || // HTR
                                     (phase == 4 && cube.htr()) || // become HTR
                                     false
                                 {
                                     let l = (skeleton.0, skeleton.1);
-                                    let mut sols = cube.solve(l, base_turns, limit);
+                                    let mut sols = cube.solve(l, base_turns, limit, phase);
                                     solutions.append(&mut sols);
                                 } else {
                                     nexts.push(skeleton);
@@ -904,7 +903,7 @@ impl Cube {
                         }
                         tick += 1;
                         if tick % 100 == 0 {
-                            print!("p:{}, gen:{}, co:{}, be:{}, {} ({})        \r", phase, gen, cube.co(), cube.be(), p2s(&nexts.last().unwrap().0), i2s(&nexts.last().unwrap().1));
+                            print!("{} ({})                    \r", p2s(&nexts.last().unwrap().0), i2s(&nexts.last().unwrap().1));
                             nl = true;
                         }
                     }
@@ -1014,8 +1013,6 @@ fn main() {
         sequence,
         sequence2,
         sequence3,
-        sequence4,
-        sequence5,
         sequence6,
         sequence7,
     ].iter().map(|turns| {
@@ -1026,45 +1023,57 @@ fn main() {
         )
     }).collect();
     sequences.push(sc);
-    sequences.push(sc2);
 
-    for seq in sequences {
-        let mut ct = 0;
+    let single_turns: Vec<Perm> = Perm::turns(0).values().cloned().collect();
+    let eo_turns: Vec<Perm> = Perm::turns(1).values().cloned().collect();
+    let dr_turns: Vec<Perm> = Perm::turns(2).values().cloned().collect();
+    let htr_turns: Vec<Perm> = Perm::turns(3).values().cloned().collect();
+    let slice_turns: Vec<Perm> = Perm::turns(4).values().cloned().collect();
+    let base_turns = [&single_turns, &eo_turns, &dr_turns, &htr_turns, &slice_turns];
 
-        println!("sequence: {:?}", seq);
+    cube.turn(&Turn::R);
+    assert!(cube.trigger(), "{} {}", &cube.co(), &cube.be());
+    cube.turn(&Turn::RI);
 
-        let single_turns: Vec<Perm> = Perm::turns(0).values().cloned().collect();
-        let eo_turns: Vec<Perm> = Perm::turns(1).values().cloned().collect();
-        let dr_turns: Vec<Perm> = Perm::turns(2).values().cloned().collect();
-        let htr_turns: Vec<Perm> = Perm::turns(3).values().cloned().collect();
-        let slice_turns: Vec<Perm> = Perm::turns(4).values().cloned().collect();
-        let base_turns = [&single_turns, &eo_turns, &dr_turns, &htr_turns, &slice_turns];
-
-        loop {
-            ct += 1;
-            cube.apply(&seq);
-            if ct == 1 {
-                println!("initial state: {}", cube);
-            }
-
-            let initial = (vec![], vec![]);
-            let solutions = &cube.solve(initial, &base_turns, &mut 99);
-            let lens: Vec<usize> = solutions.iter().map(|s| s.0.len() + s.1.len()).collect();
-            let i = (0..(lens.len())).min_by(|&i, &j| lens[i].cmp(&lens[j])).unwrap();
-            let solution = &solutions[i];
-
-
-            let mut st: Vec<Perm> = solution.0.iter().map(|&x| x.clone()).collect();
-            let inv = &mut solution.1.iter().rev().cloned().map(|x| x.inverse(None)).collect();
-            st.append(inv);
-
-            let sol = Perm::join(st);
-            cube.apply(&sol);
-            if cube == Cube::SOLVED {
-                println!("Solved by {} !", sol);
-                break;
-            } else {
-            }
+    // for seq in sequences {
+    //     solve(&mut cube, &seq, &base_turns);
+    // }
+    loop {
+        for i in 0..(sequences.len()) {
+            println!("{}: {}", i, (&sequences)[i].name.as_ref().unwrap());
         }
+        use std::io::{stdin,stdout,Write};
+        let mut s=String::new();
+        print!("Please enter a number or scramble: ");
+        let _=stdout().flush();
+        stdin().read_line(&mut s).expect("Did not enter a correct string");
+        let n = s.chars().next().unwrap();
+        let seq = match n.to_digit(10) {
+            Some(i) => (&sequences)[i as usize].clone(),
+            _ => Perm::from_scramble(&s)
+        };
+        solve(&mut cube, &seq, &base_turns);
     }
+}
+
+fn solve(cube: &mut Cube, seq: &Perm, base_turns: &[&Vec<Perm>; 5]) {
+    println!("sequence: {:?}", seq);
+
+    cube.apply(seq);
+    println!("initial state: {}", cube);
+
+    let initial = (vec![], vec![]);
+    let solutions = &cube.solve(initial, &base_turns, &mut 99, 0);
+    let lens: Vec<usize> = solutions.iter().map(|s| s.0.len() + s.1.len()).collect();
+    let i = (0..(lens.len())).min_by(|&i, &j| lens[i].cmp(&lens[j])).unwrap();
+    let solution = &solutions[i];
+
+    let mut st: Vec<Perm> = solution.0.iter().map(|&x| x.clone()).collect();
+    let inv = &mut solution.1.iter().rev().cloned().map(|x| x.inverse(None)).collect();
+    st.append(inv);
+
+    let sol = Perm::join(st);
+    cube.apply(&sol);
+    assert!(*cube == Cube::SOLVED);
+    println!("Solved by {} !\n\n", sol);
 }
