@@ -324,6 +324,9 @@ impl Perm {
                 turns_.push(turns_h.get(perm).unwrap());
             };
         };
+        if gen == 5 {
+            register(&["U", "U'", "U2", "D", "D'", "D2"]);
+        } else
         if gen == 4 {
             register(&["R", "L'", "L", "R'"]);
         } else {
@@ -711,6 +714,40 @@ impl Cube {
         (4..8).map(|ep| [1,1,1,1, 0,1,0,1, 1,1,1,1, 0,1,0,1, 1,1,1,1, 1,1,1,1,][self.edge[ep] as usize]).sum()
     }
 
+    fn pre_trigger(&self) -> bool {
+        let u_table = vec![
+            ( vec![(0, 1), (3, 2)], vec![(0, 0)],),
+            ( vec![(0, 2), (1, 1)], vec![(1, 0)],),
+            ( vec![(1, 2), (2, 1)], vec![(2, 0)],),
+            ( vec![(2, 2), (3, 1)], vec![(3, 0)],),
+        ];
+        let d_table = vec![
+            ( vec![(4, 1), (7, 2)], vec![(8, 0)],),
+            ( vec![(4, 2), (5, 1)], vec![(9, 0)],),
+            ( vec![(5, 2), (6, 1)], vec![(10, 0)],),
+            ( vec![(6, 2), (7, 1)], vec![(11, 0)],),
+        ];
+        let e_table = vec![
+            (
+            vec![],
+            vec![(4, 1), (5, 0), (6, 0), (7, 1)],
+            ),
+            (
+            vec![],
+            vec![(4, 0), (5, 1), (6, 1), (7, 0)],
+            ),
+        ];
+        [u_table, d_table, e_table].iter().all(|table| {
+            table.iter().any(|pat| {
+                pat.0.iter().all(|cp| {
+                    Cube::CP[self.corner[cp.0] as usize].1 == cp.1
+                }) &&
+                pat.1.iter().all(|ep| {
+                    [1,1,1,1, 0,1,0,1, 1,1,1,1, 0,1,0,1, 1,1,1,1, 1,1,1,1,][self.edge[ep.0] as usize] == ep.1
+                })
+            })
+        })
+    }
     fn trigger(&self) -> bool {
         let table = [
             (
@@ -796,6 +833,15 @@ impl Cube {
                 }
         }
         if *phase == 2 {
+            if self.pre_trigger() {
+                *phase = 6;
+                crif(nl);
+                println!("{} ({})", p2s(&turns), i2s(&inv_turns));
+                println!("DR Pre-Trigger!");
+                depth = true;
+            }
+        }
+        if *phase == 6 {
             if self.trigger() {
                 *phase = 3;
                 crif(nl);
@@ -831,7 +877,7 @@ impl Cube {
         self.determin_phase(&mut phase, &mut bo, &initial.0, &initial.1, &mut nl, solver);
         let mut perms: Vec<Solution<'a>> = vec![(initial.0.to_vec(), initial.1.to_vec(), self.clone(), phase, bo)];
         let mut tick = 0;
-        let p2g = [0, 1, 2, 4, 2, 3];
+        let p2g = [0, 1, 2, 4, 2, 3, 5];
         if self.solved() {
             solutions.push(perms.last().unwrap().clone());
         }
@@ -859,16 +905,16 @@ impl Cube {
                         if len + 1 >= *limit || fc > *limit {
                             continue;
                         }
-                        let the_turns = if inv { inv_turns } else { turns };
+                        let (turns, inv_turns) = if inv { (inv_turns, turns) } else { (turns, inv_turns) };
                         let k1 = turn.kind().unwrap();
                         if cube.face_solved(&k1.0) {
                             continue;
                         }
-                        match the_turns.last().map(|t| t.kind()).flatten() {
+                        match turns.last().map(|t| t.kind()).flatten() {
                             Some(k2) => {
                                 if k1.0 == k2.0 { continue; };
-                                if the_turns.len() > 1 && k1.1 == k2.1 {
-                                    let k2 = the_turns[the_turns.len() - 2].kind();
+                                if turns.len() > 1 && k1.1 == k2.1 {
+                                    let k2 = turns[turns.len() - 2].kind();
                                     match k2 {
                                         Some(k2) => {
                                             if k1.0 == k2.0 { continue; };
@@ -879,6 +925,23 @@ impl Cube {
                             },
                             None => (),
                         };
+                        if phase == 5 {
+                            match inv_turns.last().map(|t| t.kind()).flatten() {
+                                Some(k2) => {
+                                    if k1.0 == k2.0 { continue; };
+                                    if inv_turns.len() > 1 && k1.1 == k2.1 {
+                                        let k2 = inv_turns[inv_turns.len() - 2].kind();
+                                        match k2 {
+                                            Some(k2) => {
+                                                if k1.0 == k2.0 { continue; };
+                                            },
+                                            None => (),
+                                        };
+                                    }
+                                },
+                                None => (),
+                            };
+                        }
                         let mut cube = cube.clone();
                         let bo = no;
                         if inv {
@@ -888,7 +951,7 @@ impl Cube {
                         }
                         let mut ao = if phase == 0 { cube.eo() } else { cube.co() };
 
-                        let mut applied_turns: Vec<&'a Perm> = the_turns.to_vec();
+                        let mut applied_turns: Vec<&'a Perm> = turns.to_vec();
                         if
                             phase == 0 && (ao <= bo || ao <= 4) ||
                             // phase == 1 && (ao <= bo || ao <= 4) ||
@@ -896,7 +959,7 @@ impl Cube {
                         {
                             applied_turns.push(turn);
                             let (turns, inv_turns) = if inv {
-                                (turns.to_vec(), applied_turns.to_vec())
+                                (inv_turns.to_vec(), applied_turns.to_vec())
                             } else {
                                 (applied_turns.to_vec(), inv_turns.to_vec())
                             };
@@ -918,7 +981,7 @@ impl Cube {
                                 crif(&mut nl);
                                 println!("Solution: {} ({})        \r", p2s(&skeleton.0), i2s(&skeleton.1));
                                 solutions.push(skeleton);
-                                if phase >= 5 {
+                                if phase == 5 {
                                     bf = true;
                                     break;
                                 }
@@ -1079,7 +1142,7 @@ fn main() {
 
 struct Solver<'a> {
     turns: HashMap<String, Perm>,
-    base_turns: [Vec<&'a Perm>; 5]
+    base_turns: [Vec<&'a Perm>; 6]
 }
 
 impl<'a> Solver<'a> {
@@ -1089,7 +1152,8 @@ impl<'a> Solver<'a> {
         let dr_turns: Vec<&'a Perm> = Perm::turns(2, turns_h);
         let htr_turns: Vec<&'a Perm> = Perm::turns(3, turns_h);
         let slice_turns: Vec<&'a Perm> = Perm::turns(4, turns_h);
-        let base_turns = [single_turns, eo_turns, dr_turns, htr_turns, slice_turns];
+        let p6_turns: Vec<&'a Perm> = Perm::turns(5, turns_h);
+        let base_turns = [single_turns, eo_turns, dr_turns, htr_turns, slice_turns, p6_turns];
 
         let mut solver = Solver {
             turns: turns_h.clone(),
