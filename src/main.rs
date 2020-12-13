@@ -325,18 +325,18 @@ impl Perm {
             };
         };
         if gen == 4 {
-            register(&["R", "R'", "L", "L'"]);
+            register(&["R", "L'", "L", "R'"]);
         } else {
             if gen < 3 {
                 if gen < 2 {
                     if gen < 1 {
-                        register(&["F", "F'", "B", "B'"]);
+                        register(&["F", "B'", "B", "F'"]);
                     }
-                    register(&["R", "R'", "L", "L'"]);
+                    register(&["R", "L'", "L", "R'"]);
                 }
-                register(&["U", "U'", "D", "D'"]);
+                register(&["U", "D'", "D", "U'"]);
             }
-            register(&["U2", "D2", "R2", "L2", "F2", "B2"]);
+            register(&["U2", "R2", "D2", "F2", "L2", "B2"]);
         }
 
         turns_
@@ -764,15 +764,78 @@ impl Cube {
         true
     }
 
+    fn determin_phase(&self, phase: &mut usize, ao: &mut u8, turns: &Vec<&Perm>, inv_turns: &Vec<&Perm>, nl: &mut bool, solver: &Solver) -> bool {
+        let mut depth = false;
+        if *phase == 0 {
+            if *ao == 0 {
+                *phase = 1;
+                crif(nl);
+                println!("{} ({})", p2s(&turns), i2s(&inv_turns));
+                println!("EO!");
+                *ao = self.co();
+                depth = true;
+            }
+        }
+        if *phase == 1 {
+            let be = self.be();
+            if *ao == 0 && be == 0 {
+                *phase = 4;
+                crif(nl);
+                println!("{} ({})", p2s(&turns), i2s(&inv_turns));
+                println!("DR!");
+                depth = true;
+            } else if
+                // no == 3 && (be == 1 || be == 2) ||
+                *ao == 4 && be == 2
+                {
+                    *phase = 2;
+                    crif(nl);
+                    println!("{} ({})", p2s(&turns), i2s(&inv_turns));
+                    println!("Phase 2");
+                    depth = true;
+                }
+        }
+        if *phase == 2 {
+            if self.trigger() {
+                *phase = 3;
+                crif(nl);
+                println!("{} ({})", p2s(&turns), i2s(&inv_turns));
+                println!("DR Trigger!");
+                depth = true;
+            }
+        }
+        if *phase == 3 {
+            if self.be() == 0 && *ao == 0 {
+                *phase = 4;
+                crif(nl);
+                println!("{} ({})", p2s(&turns), i2s(&inv_turns));
+                println!("DR!");
+                depth = true;
+            }
+        }
+        if *phase == 4 && self.htr(solver) {
+            *phase = 5;
+            crif(nl);
+            println!("{} ({})", p2s(&turns), i2s(&inv_turns));
+            println!("HTR!");
+            depth = true;
+        }
+        depth
+    }
+
     fn solve<'a>(&self, initial: (Vec<&'a Perm>, Vec<&'a Perm>), solver: &'a Solver, limit: &mut usize, ip: usize) -> Vec<Solution<'a>> {
         let mut solutions: Vec<Solution<'a>> = Vec::new();
-        let mut perms: Vec<Solution<'a>> = vec![(initial.0.to_vec(), initial.1.to_vec(), self.clone(), ip, if ip == 0 { self.eo() } else { self.co() })];
-        let mut tick = 0;
+        let mut phase = ip;
         let mut nl = false;
+        let mut bo = if phase == 0 { self.eo() } else { self.co() };
+        self.determin_phase(&mut phase, &mut bo, &initial.0, &initial.1, &mut nl, solver);
+        let mut perms: Vec<Solution<'a>> = vec![(initial.0.to_vec(), initial.1.to_vec(), self.clone(), phase, bo)];
+        let mut tick = 0;
         let p2g = [0, 1, 2, 4, 2, 3];
         if self.solved() {
             solutions.push(perms.last().unwrap().clone());
         }
+        let mut fc = 0;
         while solutions.len() == 0 {
             let mut nexts: Vec<Solution<'a>> = Vec::new();
             if perms.len() == 0 {
@@ -782,84 +845,18 @@ impl Cube {
                 let mut phase = *phase;
                 let mut no = *no;
                 let len = turns.len() + inv_turns.len();
-                if len >= *limit {
-                    continue;
-                }
-                if phase == 0 {
-                    if no == 0 {
-                        phase = 1;
-                        crif(&mut nl);
-                        println!("{} ({})", p2s(turns), i2s(inv_turns));
-                        println!("EO!");
-                        no = cube.co();
-                    }
-                }
-                if phase == 1 {
-                    let be = cube.be();
-                    if no == 0 && be == 0 {
-                        phase = 4;
-                        crif(&mut nl);
-                        println!("{} ({})", p2s(turns), i2s(inv_turns));
-                        println!("DR!");
-                    } else if
-                        // no == 3 && (be == 1 || be == 2) ||
-                        no == 4 && be == 2
-                    {
-                        phase = 2;
-                        crif(&mut nl);
-                        println!("{} ({})", p2s(turns), i2s(inv_turns));
-                        println!("Phase 2");
-                    }
-                }
-                if phase == 2 {
-                    if cube.trigger() {
-                        phase = 3;
-                        crif(&mut nl);
-                        println!("{} ({})", p2s(turns), i2s(inv_turns));
-                        println!("DR Trigger!");
-                    } else {
-                    }
-                }
-                if phase == 3 {
-                    if cube.be() == 0 && no == 0 {
-                        phase = 4;
-                        crif(&mut nl);
-                        println!("{} ({})", p2s(turns), i2s(inv_turns));
-                        println!("DR!");
-                    } else {
-                    }
-                }
-                if phase == 4 && cube.htr(solver) {
-                    phase = 5;
-                    crif(&mut nl);
-                    println!("{} ({})", p2s(turns), i2s(inv_turns));
-                    println!("HTR!");
-                }
-                /*
-                if gen == 3 && cube.cp() {
-                    gen = 4;
-                    crif(&mut nl);
-                    println!("{} ({})", p2s(turns), i2s(inv_turns));
-                    println!("HTR-CP!");
-                }
-                */
-                if len >= 8 && phase == 0 {
-                    crif(&mut nl);
-                    println!("Too long to EO!");
-                    continue;
-                }
-                /*
-                if len >= 30 {
-                    continue;
-                }
-                */
+                let mut depth = false;
+
                 let mut bf = false;
                 let gen = p2g[phase];
+                if fc > *limit {
+                    break;
+                }
                 for turn in &solver.base_turns[gen] {
                     for &inv in {
                         if phase == 5 { vec![false] } else { vec![false, true] }
                     }.iter() {
-                        if len + 1 >= *limit {
+                        if len + 1 >= *limit || fc > *limit {
                             continue;
                         }
                         let the_turns = if inv { inv_turns } else { turns };
@@ -883,27 +880,34 @@ impl Cube {
                             None => (),
                         };
                         let mut cube = cube.clone();
-                        let bo = if phase == 0 { cube.eo() } else { cube.co() };
+                        let bo = no;
                         if inv {
                             cube.inv_apply(turn);
                         } else {
                             cube.apply(turn);
                         }
-                        let ao = if phase == 0 { cube.eo() } else { cube.co() };
-                        let mut next_turns: Vec<&'a Perm> = the_turns.to_vec();
-                        assert!(phase == 2 && (ao == bo) || phase != 2, "{} {}", turn, gen);
+                        let mut ao = if phase == 0 { cube.eo() } else { cube.co() };
+
+                        let mut applied_turns: Vec<&'a Perm> = the_turns.to_vec();
                         if
                             phase == 0 && (ao <= bo || ao <= 4) ||
                             // phase == 1 && (ao <= bo || ao <= 4) ||
                             phase >= 1
                         {
-                            next_turns.push(turn);
-                            let solved = cube.solved();
-                            let skeleton = if inv {
-                                (turns.to_vec(), next_turns.to_vec(), cube.clone(), phase, ao)
+                            applied_turns.push(turn);
+                            let (turns, inv_turns) = if inv {
+                                (turns.to_vec(), applied_turns.to_vec())
                             } else {
-                                (next_turns.to_vec(), inv_turns.to_vec(), cube.clone(), phase, ao)
+                                (applied_turns.to_vec(), inv_turns.to_vec())
                             };
+                            depth = cube.determin_phase(&mut phase, &mut ao, &turns, &inv_turns, &mut nl, solver);
+                            if len >= 8 && phase == 0 {
+                                crif(&mut nl);
+                                println!("Too long to EO!");
+                                continue;
+                            }
+                            let solved = cube.solved();
+                            let skeleton = (turns, inv_turns, cube.clone(), phase, ao);
                             if solved {
                                 let len = skeleton.0.len() + skeleton.1.len();
                                 if len < *limit {
@@ -919,18 +923,11 @@ impl Cube {
                                     break;
                                 }
                             } else {
-                                if
-                                    (phase == 0 && ao == 0) || // become EO
-                                    (phase == 1 && ao == 4 && cube.be() == 2) || // become phase2
-                                    (phase == 2 && cube.trigger()) || // become trigger
-                                    ((phase == 1 || phase == 3) && ao == 0 && cube.be() == 0) || // become DR
-                                    // (phase == 5) || // HTR
-                                    (phase == 4 && cube.htr(solver)) || // become HTR
-                                    false
-                                {
-                                    let l = (skeleton.0, skeleton.1);
-                                    let mut sols = cube.solve(l, solver, limit, phase);
+                                if depth {
+                                    let mut sols = cube.solve((skeleton.0, skeleton.1), solver, limit, phase);
                                     solutions.append(&mut sols);
+                                    fc += 1;
+                                    continue;
                                 } else {
                                     nexts.push(skeleton);
                                 }
