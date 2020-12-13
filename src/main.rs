@@ -256,12 +256,12 @@ impl Perm {
         cube.perm(&name)
     }
 
-    fn join(perms: Vec<Perm>) -> Perm {
+    fn join(perms: Vec<&Perm>) -> Perm {
         let mut cube = Cube::SOLVED;
         let name = perms.iter().flat_map(|p| p.name.as_ref().map(|s| s.to_string())).collect::<Vec<_>>().join(" ");
 
         for perm in perms {
-            cube.apply(&perm);
+            cube.apply(perm);
         }
         cube.perm(name.as_str())
     }
@@ -273,7 +273,7 @@ impl Perm {
         cube.perm(turn.name)
     }
 
-    fn turns(gen: u8) -> HashMap<&'static str, Perm> {
+    fn generate_turns<'a>() -> HashMap<String, Perm> {
         let mut turns = HashMap::new();
 
         let u = Perm::from_turn(&Turn::U);
@@ -295,41 +295,51 @@ impl Perm {
         let li = l.inverse(None);
         let l2 = l.double();
 
-        if gen == 4 {
-            let set = [
-                "R", "R'", "L", "L'",
-            ];
+        turns.insert("F".to_string(), f);
+        turns.insert("F'".to_string(), fi);
+        turns.insert("B".to_string(), b);
+        turns.insert("B'".to_string(), bi);
+        turns.insert("R".to_string(), r);
+        turns.insert("R'".to_string(), ri);
+        turns.insert("L".to_string(), l);
+        turns.insert("L'".to_string(), li);
+        turns.insert("U".to_string(), u);
+        turns.insert("U'".to_string(), ui);
+        turns.insert("D".to_string(), d);
+        turns.insert("D'".to_string(), di);
+        turns.insert("U2".to_string(), u2);
+        turns.insert("D2".to_string(), d2);
+        turns.insert("R2".to_string(), r2);
+        turns.insert("L2".to_string(), l2);
+        turns.insert("F2".to_string(), f2);
+        turns.insert("B2".to_string(), b2);
+
+        turns
+    }
+
+    fn turns<'a>(gen: u8, turns_h: &'a HashMap<String, Perm>) -> Vec<&'a Perm> {
+        let mut turns_ = Vec::new();
+        let mut register = |set: &[&str]| {
             for &perm in set.iter() {
-                turns.insert(perm, Perm::from_scramble(perm));
+                turns_.push(turns_h.get(perm).unwrap());
             };
+        };
+        if gen == 4 {
+            register(&["R", "R'", "L", "L'"]);
         } else {
             if gen < 3 {
                 if gen < 2 {
                     if gen < 1 {
-                        turns.insert("F", f);
-                        turns.insert("F'", fi);
-                        turns.insert("B", b);
-                        turns.insert("B'", bi);
+                        register(&["F", "F'", "B", "B'"]);
                     }
-                    turns.insert("R", r);
-                    turns.insert("R'", ri);
-                    turns.insert("L", l);
-                    turns.insert("L'", li);
+                    register(&["R", "R'", "L", "L'"]);
                 }
-                turns.insert("U", u);
-                turns.insert("U'", ui);
-                turns.insert("D", d);
-                turns.insert("D'", di);
+                register(&["U", "U'", "D", "D'"]);
             }
-            turns.insert("U2", u2);
-            turns.insert("D2", d2);
-            turns.insert("R2", r2);
-            turns.insert("L2", l2);
-            turns.insert("F2", f2);
-            turns.insert("B2", b2);
+            register(&["U2", "D2", "R2", "L2", "F2", "B2"]);
         }
 
-        turns
+        turns_
     }
 
     fn kind(&self) -> Option<(Surface, u8)> {
@@ -347,14 +357,11 @@ impl Perm {
         }
     }
 
-    fn from_scramble(scramble: &str) -> Perm {
+    fn from_scramble<'a>(scramble: &'a str, solver: &Solver) -> Perm {
         let re = Regex::new(r"([UDFBRL]['2]?)").unwrap();
-        let perm: Perm = Perm::new();
 
-        let turns = Perm::turns(0);
-
-        let perms = re.captures_iter(scramble).map(|cap| {
-            turns.get(&cap[1]).unwrap_or(&perm).clone()
+        let perms: Vec<&Perm> = re.captures_iter(scramble).map(|cap| {
+            solver.get_turn(cap[1].to_string())
         }).collect();
 
         Perm::join(perms)
@@ -489,6 +496,16 @@ impl Cube {
           (6, 0), ( 9, 1), ( 7, 0), ( 3, 1),
           (7, 1), ( 8, 1), ( 4, 1), ( 0, 1),
           (8, 0), ( 9, 0), (10, 0), (11, 0) ];
+
+    const HTRC: [[&'static str; 8]; 7] = [
+        ["", "NA", "U2", "NA", "R2", "NA", "F2", "NA"],
+        ["NA", "", "NA", "B2 L2", "NA", "L2", "NA", "D2 L2"],
+        ["NA", "NA", "", "NA", "B2", "NA", "D2 B2", "NA"],
+        ["NA", "NA", "NA", "", "NA", "NA", "NA", "NA"],
+        ["NA", "NA", "NA", "NA", "", "NA", "D2", "NA"],
+        ["NA", "NA", "NA", "NA", "NA", "", "NA", "NA"],
+        ["NA", "NA", "NA", "NA", "NA", "NA", "", "NA"],
+    ];
 
     fn face_solved(&self, s: &Surface) -> bool {
         let is = match s {
@@ -715,7 +732,7 @@ impl Cube {
         })
     }
 
-    fn htr(&self) -> bool {
+    fn htr(&self, solver: &Solver) -> bool {
         if self.co() > 0 {
             false
         } else {
@@ -725,30 +742,21 @@ impl Cube {
                     let be2: u8 = [0, 2, 8, 10].iter().map(|&i| [0,1,0,1, 1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1, 0,1,0,1,][self.edge[i] as usize]).sum();
                     be2 == 0
                 }
-            } && self.cp()
+            } && self.cp(solver)
         }
     }
 
-    fn cp(&self) -> bool {
+    fn cp(&self, solver: &Solver) -> bool {
         let mut c = self.clone();
-        let t = [
-            ["", "NA", "U2", "NA", "R2", "NA", "F2", "NA"],
-            ["NA", "", "NA", "B2 L2", "NA", "L2", "NA", "D2 L2"],
-            ["NA", "NA", "", "NA", "B2", "NA", "D2 B2", "NA"],
-            ["NA", "NA", "NA", "", "NA", "NA", "NA", "NA"],
-            ["NA", "NA", "NA", "NA", "", "NA", "D2", "NA"],
-            ["NA", "NA", "NA", "NA", "NA", "", "NA", "NA"],
-            ["NA", "NA", "NA", "NA", "NA", "NA", "", "NA"],
-        ];
         for i in 0..7 {
             let p = (i..7).find(|&p| c.corner[p] == Cube::SOLVED.corner[i]);
             match p {
                 None => { return false },
                 Some(p) => {
-                    match t[i][p] {
+                    match Cube::HTRC[i][p] {
                         "" => { continue; },
                         "NA" => { return false },
-                        a => { c.apply(&Perm::from_scramble(a)); }
+                        a => { c.apply(solver.get_turn(a.to_string())); }
                     };
                 }
             };
@@ -756,7 +764,7 @@ impl Cube {
         true
     }
 
-    fn solve<'a>(&self, initial: (Vec<&'a Perm>, Vec<&'a Perm>), base_turns: &'a [&Vec<Perm>; 5], limit: &mut usize, ip: usize) -> Vec<Solution<'a>> {
+    fn solve<'a>(&self, initial: (Vec<&'a Perm>, Vec<&'a Perm>), solver: &'a Solver, limit: &mut usize, ip: usize) -> Vec<Solution<'a>> {
         let mut solutions: Vec<Solution<'a>> = Vec::new();
         let mut perms: Vec<Solution<'a>> = vec![(initial.0.to_vec(), initial.1.to_vec(), self.clone(), ip, if ip == 0 { self.eo() } else { self.co() })];
         let mut tick = 0;
@@ -821,7 +829,7 @@ impl Cube {
                     } else {
                     }
                 }
-                if phase == 4 && cube.htr() {
+                if phase == 4 && cube.htr(solver) {
                     phase = 5;
                     crif(&mut nl);
                     println!("{} ({})", p2s(turns), i2s(inv_turns));
@@ -847,7 +855,7 @@ impl Cube {
                 */
                 let mut bf = false;
                 let gen = p2g[phase];
-                for turn in base_turns[gen] {
+                for turn in &solver.base_turns[gen] {
                     for &inv in {
                         if phase == 5 { vec![false] } else { vec![false, true] }
                     }.iter() {
@@ -877,9 +885,9 @@ impl Cube {
                         let mut cube = cube.clone();
                         let bo = if phase == 0 { cube.eo() } else { cube.co() };
                         if inv {
-                            cube.inv_apply(&turn);
+                            cube.inv_apply(turn);
                         } else {
-                            cube.apply(&turn);
+                            cube.apply(turn);
                         }
                         let ao = if phase == 0 { cube.eo() } else { cube.co() };
                         let mut next_turns: Vec<&'a Perm> = the_turns.to_vec();
@@ -917,11 +925,11 @@ impl Cube {
                                     (phase == 2 && cube.trigger()) || // become trigger
                                     ((phase == 1 || phase == 3) && ao == 0 && cube.be() == 0) || // become DR
                                     // (phase == 5) || // HTR
-                                    (phase == 4 && cube.htr()) || // become HTR
+                                    (phase == 4 && cube.htr(solver)) || // become HTR
                                     false
                                 {
                                     let l = (skeleton.0, skeleton.1);
-                                    let mut sols = cube.solve(l, base_turns, limit, phase);
+                                    let mut sols = cube.solve(l, solver, limit, phase);
                                     solutions.append(&mut sols);
                                 } else {
                                     nexts.push(skeleton);
@@ -993,17 +1001,20 @@ impl fmt::Display for Turn {
 }
 
 fn main() {
+    let turns_h = Perm::generate_turns();
+    let solver = &mut Solver::new(&turns_h);
+
     let mut cube = Cube::SOLVED;
-    cube.apply(&Perm::from_scramble("U"));
-    cube.apply(&Perm::from_scramble("D"));
-    cube.apply(&Perm::from_scramble("F"));
-    cube.apply(&Perm::from_scramble("F'"));
+    cube.apply(&Perm::from_scramble("U", solver));
+    cube.apply(&Perm::from_scramble("D", solver));
+    cube.apply(&Perm::from_scramble("F", solver));
+    cube.apply(&Perm::from_scramble("F'", solver));
     cube.inv_apply(&Perm::from_turn(&Turn::U));
     cube.inv_apply(&Perm::from_turn(&Turn::D));
     assert!(cube.solved(), "{:?}", cube);
 
     let mut cube: Cube = Cube::SOLVED;
-    cube.apply(&Perm::from_scramble("R U R'"));
+    cube.apply(&Perm::from_scramble("R U R'", solver));
     assert_eq!(cube.co(), 3, "{:?}", cube);
 
     let mut cube: Cube = Cube::SOLVED;
@@ -1034,8 +1045,8 @@ fn main() {
     ];
     let sequence6 = vec![ Turn::R, Turn::U, Turn::U, Turn::DI, Turn::B, Turn::DI ];
     let sequence7 = vec![ Turn::R ];
-    let sc = Perm::from_scramble("R' U' F R2 U R2 U F2 L2 D' R2 U B2 U' L' U F' L R2 D' F' L' R D' R' U' F");
-    let sc2 = Perm::from_scramble("R");
+    let sc = Perm::from_scramble("R' U' F R2 U R2 U F2 L2 D' R2 U B2 U' L' U F' L R2 D' F' L' R D' R' U' F", solver);
+    let sc2 = Perm::from_scramble("R", solver);
     let mut sequences: Vec<Perm> = vec![
         sequence,
         sequence2,
@@ -1045,33 +1056,12 @@ fn main() {
     ].iter().map(|turns| {
         Perm::join(
             turns.iter().map(|t| {
-                Perm::from_turn(t)
+                solver.get_turn(t.name.to_string())
             }).collect()
         )
     }).collect();
     sequences.push(sc);
 
-    let mut single_turns: Vec<Perm> = Perm::turns(0).values().cloned().collect();
-    let mut eo_turns: Vec<Perm> = Perm::turns(1).values().cloned().collect();
-    let mut dr_turns: Vec<Perm> = Perm::turns(2).values().cloned().collect();
-    let mut htr_turns: Vec<Perm> = Perm::turns(3).values().cloned().collect();
-    let mut slice_turns: Vec<Perm> = Perm::turns(4).values().cloned().collect();
-    fn keyf(p: &Perm) -> Option<String> { p.name.clone() };
-    single_turns.sort_by_key(keyf);
-    single_turns.reverse();
-    eo_turns.sort_by_key(keyf);
-    dr_turns.sort_by_key(keyf);
-    htr_turns.sort_by_key(keyf);
-    slice_turns.sort_by_key(keyf);
-    let base_turns = [&single_turns, &eo_turns, &dr_turns, &htr_turns, &slice_turns];
-
-    cube.turn(&Turn::R);
-    assert!(cube.trigger(), "{} {}", &cube.co(), &cube.be());
-    cube.turn(&Turn::RI);
-
-    // for seq in sequences {
-    //     solve(&mut cube, &seq, &base_turns);
-    // }
     loop {
         for i in 0..(sequences.len()) {
             println!("{}: {}", i, (&sequences)[i].name.as_ref().unwrap());
@@ -1084,32 +1074,74 @@ fn main() {
         let n = s.chars().next().unwrap();
         let seq = match n.to_digit(10) {
             Some(i) => (&sequences)[i as usize].clone(),
-            _ => Perm::from_scramble(&s)
+            _ => Perm::from_scramble(&s, solver)
         };
-        solve(&mut cube, &seq, &base_turns);
+        solver.solve(&mut cube, &seq);
     }
 }
 
-fn solve(cube: &mut Cube, seq: &Perm, base_turns: &[&Vec<Perm>; 5]) {
-    println!("sequence: {:?}", seq);
-
-    cube.apply(seq);
-    println!("initial state: {}", cube);
-
-    let initial = (vec![], vec![]);
-    let now = Instant::now();
-    let solutions = &cube.solve(initial, &base_turns, &mut 99, 0);
-    let elapsed = now.elapsed();
-    let lens: Vec<usize> = solutions.iter().map(|s| s.0.len() + s.1.len()).collect();
-    let i = (0..(lens.len())).min_by(|&i, &j| lens[i].cmp(&lens[j])).unwrap();
-    let solution = &solutions[i];
-
-    let mut st: Vec<Perm> = solution.0.iter().map(|&x| x.clone()).collect();
-    let inv = &mut solution.1.iter().rev().cloned().map(|x| x.inverse(None)).collect();
-    st.append(inv);
-
-    let sol = Perm::join(st);
-    cube.apply(&sol);
-    assert!(*cube == Cube::SOLVED);
-    println!("Solved by {} in {}s!\n\n", sol, elapsed.as_secs_f32());
+struct Solver<'a> {
+    turns: HashMap<String, Perm>,
+    base_turns: [Vec<&'a Perm>; 5]
 }
+
+impl<'a> Solver<'a> {
+    fn new(turns_h: &'a HashMap<String, Perm>) -> Self {
+        let single_turns: Vec<&'a Perm> = Perm::turns(0, turns_h);
+        let eo_turns: Vec<&'a Perm> = Perm::turns(1, turns_h);
+        let dr_turns: Vec<&'a Perm> = Perm::turns(2, turns_h);
+        let htr_turns: Vec<&'a Perm> = Perm::turns(3, turns_h);
+        let slice_turns: Vec<&'a Perm> = Perm::turns(4, turns_h);
+        let base_turns = [single_turns, eo_turns, dr_turns, htr_turns, slice_turns];
+
+        let mut solver = Solver {
+            turns: turns_h.clone(),
+            base_turns
+        };
+        solver.get_turn_mut("D2 L2".to_string());
+        solver.get_turn_mut("B2 L2".to_string());
+        solver.get_turn_mut("D2 B2".to_string());
+
+        solver
+    }
+
+    fn get_turn(&self, turn: String) -> &Perm {
+        self.turns.get(&turn).unwrap()
+    }
+
+    fn get_turn_mut(&mut self, turn: String) -> &Perm {
+        if self.turns.contains_key(&turn) {
+            self.turns.get(&turn).unwrap()
+        } else {
+            let p = Perm::from_scramble(&turn, &*self);
+            self.turns.insert(turn.to_string(), p);
+            self.get_turn_mut(turn)
+        }
+    }
+
+    fn solve(&mut self, cube: &mut Cube, seq: &Perm) {
+        println!("sequence: {:?}", seq);
+
+        cube.apply(seq);
+        println!("initial state: {}", cube);
+
+        let initial = (vec![], vec![]);
+        let now = Instant::now();
+        let solutions = &cube.solve(initial, self, &mut 99, 0);
+        let elapsed = now.elapsed();
+        let lens: Vec<usize> = solutions.iter().map(|s| s.0.len() + s.1.len()).collect();
+        let i = (0..(lens.len())).min_by(|&i, &j| lens[i].cmp(&lens[j])).unwrap();
+        let solution = &solutions[i];
+
+        let mut st: Vec<&Perm> = solution.0.iter().cloned().collect();
+        let inv: &mut Vec<Perm> = &mut solution.1.iter().rev().cloned().map(|x| x.inverse(None)).collect();
+        let inv: &mut Vec<&Perm> = &mut inv.iter().collect();
+        st.append(inv);
+
+        let sol = Perm::join(st);
+        cube.apply(&sol);
+        assert!(*cube == Cube::SOLVED);
+        println!("Solved by {} in {}s!\n\n", sol, elapsed.as_secs_f32());
+    }
+}
+
