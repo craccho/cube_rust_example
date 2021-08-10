@@ -2,6 +2,8 @@ use std::fmt;
 use regex::Regex;
 use std::collections::HashMap;
 use std::time::Instant;
+use rand::thread_rng;
+use rand::seq::SliceRandom;
 
 type CornerPosition = usize;
 type EdgePosition = usize;
@@ -898,7 +900,9 @@ impl Cube {
                 if fc > *limit {
                     break;
                 }
-                for turn in &solver.base_turns[gen] {
+                let mut ts: Vec<&Perm> = solver.base_turns[gen].clone();
+                ts.shuffle(&mut thread_rng());
+                for turn in &ts {
                     for &inv in {
                         if phase == 5 { vec![false] } else { vec![false, true] }
                     }.iter() {
@@ -1188,7 +1192,7 @@ impl<'a> Solver<'a> {
 
         let initial = (vec![], vec![]);
         let now = Instant::now();
-        let solutions = &cube.solve(initial, self, &mut 99, 0);
+        let solutions = &cube.solve(initial, self, &mut 30, 0);
         let elapsed = now.elapsed();
         let lens: Vec<usize> = solutions.iter().map(|s| s.0.len() + s.1.len()).collect();
         let i = (0..(lens.len())).min_by(|&i, &j| lens[i].cmp(&lens[j])).unwrap();
