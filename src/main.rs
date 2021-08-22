@@ -650,7 +650,7 @@ impl Cube {
     }
 
     fn inv_apply(&mut self, p: &Perm) {
-        let p = p.inverse(None);
+        // let p = p.inverse(None);
         let mut cm = [(0, 0); 24];
         for i in 0..8 {
             let c = self.corner[i] as usize;
@@ -659,12 +659,13 @@ impl Cube {
             cm[Cube::CT[2][c] as usize] = (i, 2);
         }
         let l = p.cp.len();
-        for i in 0..l {
+        for ii in 0..l {
+            let i = l - ii - 1;
             let cp = &p.cp[i];
             let l = cp.len();
             let next: Vec<(CornerPosition, CornerSticker)> = (0..l)
                 .map(|i| {
-                    let j = (i + l - 1) % l;
+                    let j = (i + l + 1) % l;
                     let pi = cm[cp[i] as usize];
                     let pj = cm[cp[j] as usize];
                     let sj = Cube::CT[((pj.1 + 3 - pi.1) % 3) as usize][self.corner[pj.0] as usize];
@@ -672,7 +673,8 @@ impl Cube {
                     (pi.0, sj)
                 })
                 .collect();
-            for i in 0..l {
+            for ii in 0..l {
+                let i = l - ii - 1;
                 self.corner[next[i].0] = next[i].1;
             }
         }
@@ -684,12 +686,13 @@ impl Cube {
             em[Cube::EF[1][e] as usize] = (i, 1);
         }
         let l = p.ep.len();
-        for i in 0..l {
+        for ii in 0..l {
+            let i = l - ii - 1;
             let ep = &p.ep[i];
             let l = ep.len();
             let next: Vec<(EdgePosition, EdgeSticker)> = (0..l)
                 .map(|i| {
-                    let j = (i + l - 1) % l;
+                    let j = (i + l + 1) % l;
                     let pi = em[ep[i] as usize];
                     let pj = em[ep[j] as usize];
                     let sj = Cube::EF[((pj.1 + 2 - pi.1) % 2) as usize][self.edge[pj.0] as usize];
@@ -697,7 +700,8 @@ impl Cube {
                     (pi.0, sj)
                 })
                 .collect();
-            for i in 0..l {
+            for ii in 0..l {
+                let i = l - ii - 1;
                 self.edge[next[i].0] = next[i].1
             }
         }
